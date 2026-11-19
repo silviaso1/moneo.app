@@ -1,0 +1,23 @@
+export const brazilianBanks = [
+  { name: 'Nubank', color: '#8A05BE' },
+  { name: 'Itaú', color: '#EC7000' },
+  { name: 'Bradesco', color: '#CC092F' },
+  { name: 'Santander', color: '#EC0000' },
+  { name: 'Caixa Econômica', color: '#00579D' },
+  { name: 'Banco do Brasil', color: '#FAE128' },
+  { name: 'Inter', color: '#FF7A00' },
+  { name: 'C6 Bank', color: '#000000' },
+  { name: 'PicPay', color: '#21C25E' },
+  { name: 'Mercado Pago', color: '#009EE3' },
+  { name: 'PagBank', color: '#00A859' },
+  { name: 'Next', color: '#00FF00' },
+  { name: 'Neon', color: '#00A0FF' },
+  { name: 'Original', color: '#00994C' },
+  { name: 'Safra', color: '#004B87' },
+  { name: 'BTG Pactual', color: '#002855' },
+  { name: 'XP Investimentos', color: '#000000' },
+  { name: 'Sicoob', color: '#004B87' },
+  { name: 'Sicredi', color: '#00A859' },
+  { name: 'Carteira', color: '#8E8E93' }, 
+  { name: 'Outro', color: '#000000' }
+];
