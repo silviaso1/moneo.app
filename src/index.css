@@ -15,8 +15,8 @@
 body {
   background-color: #f2f2f2;
   background-image:
-    radial-gradient(60% 40% at 100% 0%, rgba(196, 181, 253, 0.55), transparent 70%),
-    radial-gradient(50% 35% at 0% 100%, rgba(221, 214, 254, 0.55), transparent 70%);
+    radial-gradient(60% 40% at 100% 0%, rgba(221, 214, 254, 0.08), transparent 40%),
+    radial-gradient(50% 35% at 0% 100%, rgba(237, 233, 254, 0.08), transparent 40%);
   background-attachment: fixed;
   color: #000;
   min-height: 100vh;
@@ -46,25 +46,35 @@ h1 {
 
 [class~="rounded-[28px]"],
 .bg-white.shadow-sm {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.9) 0%, rgba(243, 238, 255, 0.64) 55%, rgba(224, 210, 255, 0.5) 100%);
-  -webkit-backdrop-filter: blur(22px) saturate(170%);
-  backdrop-filter: blur(22px) saturate(170%);
-  border: 1px solid rgba(255, 255, 255, 0.78);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(250, 248, 255, 0.45) 55%,
+    rgba(239, 233, 255, 0.25) 100%
+  );
+  -webkit-backdrop-filter: blur(18px) saturate(120%);
+  backdrop-filter: blur(18px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
   box-shadow:
-    0 12px 40px -14px rgba(139, 92, 246, 0.25),
+    0 8px 30px -18px rgba(139, 92, 246, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(167, 139, 250, 0.14);
+    inset 0 -1px 0 rgba(167, 139, 250, 0.05);
 }
 
 .glass {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.92) 0%, rgba(243, 238, 255, 0.66) 55%, rgba(224, 210, 255, 0.55) 100%);
-  -webkit-backdrop-filter: blur(24px) saturate(170%);
-  backdrop-filter: blur(24px) saturate(170%);
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(250, 248, 255, 0.5) 55%,
+    rgba(239, 233, 255, 0.3) 100%
+  );
+  -webkit-backdrop-filter: blur(20px) saturate(120%);
+  backdrop-filter: blur(20px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
   box-shadow:
-    0 20px 60px -20px rgba(139, 92, 246, 0.35),
+    0 10px 35px -20px rgba(139, 92, 246, 0.15),
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(167, 139, 250, 0.16);
+    inset 0 -1px 0 rgba(167, 139, 250, 0.06);
 }
 
 @keyframes msgIn {

@@ -93,11 +93,9 @@ export default function LoginScreen() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center px-5 py-10">
       <div className="w-full max-w-[420px] flex flex-col items-center">
-        <div className="w-24 h-24 mb-4">
-          <Mascot mood={isLogin ? 'normal' : 'happy'} pack="preto" />
-        </div>
+
         <h1 className="text-6xl text-center mb-3">
-          Anota<br />o din.
+          Moneo.
         </h1>
         <p className="text-gray-500 text-center mb-7">
           {isLogin ? 'Entra aí que o porquinho tá te esperando.' : 'Cria sua conta e comece a anotar em dois toques.'}
@@ -186,12 +184,22 @@ export default function LoginScreen() {
           </form>
         </div>
 
-        <p className="text-gray-400 text-sm text-center mt-6">
-          {isLogin ? 'Ainda não tem conta? ' : 'Já tem conta? '}
-          <button type="button" onClick={() => switchMode(isLogin ? 'register' : 'login')} className="font-bold text-black">
-            {isLogin ? 'Criar agora' : 'Entrar'}
-          </button>
-        </p>
+        <div className="w-full flex items-center gap-4 mt-6">
+          <span className="flex-1 h-px bg-gray-300/70" />
+
+          <p className="text-gray-400 text-sm text-center whitespace-nowrap">
+            {isLogin ? 'Ainda não tem conta? ' : 'Já tem conta? '}
+            <button
+              type="button"
+              onClick={() => switchMode(isLogin ? 'register' : 'login')}
+              className="font-bold text-black"
+            >
+              {isLogin ? 'Criar agora' : 'Entrar'}
+            </button>
+          </p>
+
+          <span className="flex-1 h-px bg-gray-300/70" />
+        </div>
       </div>
     </div>
   );

@@ -92,7 +92,7 @@ export default function Settings({
 
   return (
     <div className="flex flex-col gap-5">
-      <MonthBar month={state.currentMonth} year={state.currentYear} onChange={onChangeMonth} />
+
       <h1 className="text-4xl">Ajustes</h1>
 
       <Section icon={<Landmark size={18} />} title="Contas e cartões" onNew={onAddAccount}>
