@@ -7,6 +7,8 @@ export const SHORTCUTS = {
   income: 'Receita',
   statement: 'Transações',
   investments: 'Guardado',
+  planejar: 'Planejar',
+  settings: 'Ajustes',
 };
 export const DEFAULT_SHORTCUTS = ['investment', 'fixeds', 'limits', 'invoices'];
 
@@ -21,7 +23,7 @@ export const NAV = {
 export const DEFAULT_NAV = ['dashboard', 'statement', 'charts', 'settings'];
 
 export const safeShortcuts = (l) => {
-  const ok = Array.isArray(l) ? l.filter((id, i) => SHORTCUTS[id] && l.indexOf(id) === i).slice(0, 4) : [];
+  const ok = Array.isArray(l) ? l.filter((id, i) => SHORTCUTS[id] && l.indexOf(id) === i) : [];
   return ok.length ? ok : DEFAULT_SHORTCUTS;
 };
 

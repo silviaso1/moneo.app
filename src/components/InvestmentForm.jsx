@@ -1,61 +1,73 @@
-import { useState, useEffect } from 'react';
-import FormInput from './FormInput';
-import CustomSelect from './CustomSelect';
+import { useState } from 'react';
+import { todayISO } from '../utils/format';
+import { pad } from '../utils/fixeds';
+import { AmountDisplay, Keypad } from './AmountPad';
+import DatePicker from './DatePicker';
+import { PayChips, fieldRound } from './ui';
 
-export default function InvestmentForm({ accounts, onSubmit, investmentToEdit }) {
-  const [value, setValue] = useState('');
-  const [day, setDay] = useState('');
-  const [desc, setDesc] = useState('');
-  const [bank, setBank] = useState(accounts[0]?.name || '');
+const amt = (i) => Number(i?.amount ?? i?.value ?? 0) || 0;
+const isoFromMs = (ms) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
-  useEffect(() => {
-    if (investmentToEdit) {
-      setValue(investmentToEdit.value || '');
-      setDay(investmentToEdit.day || '');
-      setDesc(investmentToEdit.desc || '');
-      setBank(investmentToEdit.bank || accounts[0]?.name || '');
-    }
-  }, [investmentToEdit, accounts]);
+export default function InvestmentForm({ accounts, investmentToEdit, onSubmit }) {
+  const i = investmentToEdit;
+  const [step, setStep] = useState(i ? 2 : 1);
+  const [cents, setCents] = useState(Math.round(amt(i) * 100));
+  const [accountId, setAccountId] = useState(i?.accountId ?? i?.account ?? accounts[0]?.id ?? null);
+  const [note, setNote] = useState(i?.note || i?.name || '');
+  const [date, setDate] = useState(i?.date || (i?.createdAt ? isoFromMs(i.createdAt) : todayISO()));
 
-  const bankOptions = accounts.map(acc => ({
-    value: acc.name,
-    label: acc.name,
-    color: acc.color
-  }));
-
-  const handleSubmit = () => {
-    if (!value || parseFloat(value) <= 0) return alert('Insira um valor válido.');
-    if (!day) return alert('Insira o dia do mês.');
-    onSubmit({ value, day, bank, desc }, investmentToEdit?.id);
-  };
+  if (step === 1) {
+    return (
+      <div>
+        <AmountDisplay cents={cents} setCents={setCents} />
+        <p className="text-center text-gray-500 mt-1 mb-5">Quanto rendeu</p>
+        <Keypad setCents={setCents} />
+        <button
+          type="button"
+          disabled={cents === 0}
+          onClick={() => setStep(2)}
+          className="w-full mt-4 bg-black text-white rounded-full py-4 font-semibold disabled:opacity-30"
+        >
+          Continuar
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <FormInput label="Valor Rendido (R$)" type="number" placeholder="0,00" value={value} onChange={(e) => setValue(e.target.value)} />
-      
-      {/* Input de Dia sem as setinhas nativas */}
-      <div className="mb-5">
-        <label className="block text-sm font-semibold text-black mb-2">Dia do Mês</label>
-        <input 
-          type="number" 
-          placeholder="Ex: 05" 
-          value={day} 
-          onChange={(e) => setDay(e.target.value)} 
-          className="w-full p-4 rounded-2xl border border-[#e0e0e0] text-base font-semibold outline-none bg-white text-black focus:border-black transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-        />
-      </div>
-      
-      <FormInput label="Descrição (Opcional)" placeholder="Ex: CDB 110%..." value={desc} onChange={(e) => setDesc(e.target.value)} />
-      
-      <CustomSelect 
-        label="Onde rendeu? (Bancos cadastrados)" 
-        options={bankOptions} 
-        value={bank} 
-        onChange={setBank} 
-      />
+    <div className="flex flex-col">
+      <AmountDisplay cents={cents} setCents={setCents} active={false} />
+      <p className="text-center text-gray-500 mt-1 mb-4">Rendimento do mês</p>
 
-      <button onClick={handleSubmit} className="w-full p-[18px] rounded-2xl bg-black text-white text-base font-bold mt-2.5 hover:bg-[#333] transition-colors">
-        {investmentToEdit ? 'Salvar Alterações' : 'Adicionar Rendimento'}
+      <div className="border-t border-gray-100 py-4">
+        <p className="font-semibold text-sm text-gray-600 mb-2">Em qual conta rendeu</p>
+        {accounts.length === 0 ? (
+          <p className="text-gray-400 text-sm">Cadastre uma conta em Ajustes para o valor cair nela.</p>
+        ) : (
+          <PayChips accounts={accounts} cards={[]} value={accountId} onChange={setAccountId} />
+        )}
+      </div>
+
+      <div className="border-t border-gray-100 py-4">
+        <p className="font-semibold text-sm text-gray-600 mb-2">Nota</p>
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ex.: CDB Nubank" className={fieldRound} />
+      </div>
+
+      <div className="border-t border-gray-100 py-4">
+        <p className="font-semibold text-sm text-gray-600 mb-2">Data</p>
+        <DatePicker value={date} onChange={setDate} />
+      </div>
+
+      <button
+        type="button"
+        disabled={cents === 0}
+        onClick={() => onSubmit({ amount: cents / 100, accountId, note, date }, i?.id)}
+        className="w-full mt-2 bg-black text-white rounded-full py-4 font-semibold disabled:opacity-30"
+      >
+        Salvar
       </button>
     </div>
   );

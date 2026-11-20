@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import useFinance from './hooks/useFinance';
@@ -17,6 +18,7 @@ import AccountForm from './components/AccountForm';
 import CategoryForm from './components/CategoryForm';
 import FixedForm from './components/FixedForm';
 import FixedOffForm from './components/FixedOffForm';
+import PayFixedForm from './components/PayFixedForm';
 import CardForm from './components/CardForm';
 import { months } from './store';
 import { safeNav } from './utils/config';
@@ -36,7 +38,7 @@ export default function App() {
 
   if (finance.loading) {
     return (
-      <div className="min-h-screen bg-[#f2f2f2] flex justify-center items-center">
+      <div className="min-h-screen flex justify-center items-center">
         <div className="w-10 h-10 border-4 border-black border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
@@ -44,6 +46,10 @@ export default function App() {
 
   const st = finance.state;
   const monthLabel = months[st.currentMonth].toLowerCase();
+
+  const dashboardState = st.animeTheme
+    ? { ...st, mascotPack: `anime-${st.animeCharacter || 'gojo'}` }
+    : st;
 
   const doLogout = () => {
     logout();
@@ -57,14 +63,21 @@ export default function App() {
   const handleOpenFixedOff = (fx) => { setFixedToEdit(fx); setModal('modal-fixed-off'); };
   const handleOpenCardModal = (card = null) => { setCardToEdit(card); setModal('modal-card'); };
 
-  const closeFixed = () => { setModal(null); setFixedToEdit(null); };
+  const handleToggleFixed = (f) => {
+    if (st.paidFixed[f.id]) {
+      finance.toggleFixedPaid(f);
+      return;
+    }
+    setFixedToEdit(f);
+    setModal('modal-fixed-pay');
+  };
 
+  const closeFixed = () => { setModal(null); setFixedToEdit(null); };
   const txOpen = modal === 'modal-expense' || modal === 'modal-income';
 
   return (
-    <div className="w-full min-h-screen  flex justify-center">
+    <div className="w-full min-h-screen flex justify-center">
       <div className="w-full max-w-[1100px] relative flex flex-col pb-[120px] px-[5%] md:px-[10%]">
-
         <header className="sticky top-0 z-3 pt-5 pb-2">
           <Header
             onSettings={() => setTab('settings')}
@@ -76,7 +89,7 @@ export default function App() {
         <div className="flex flex-col gap-8 flex-1">
           {tab === 'dashboard' && (
             <Dashboard
-              state={st}
+              state={dashboardState}
               percent={finance.percent}
               remaining={finance.remaining}
               totalAvailable={finance.totalAvailable}
@@ -88,7 +101,7 @@ export default function App() {
               onToggleShowAll={() => finance.update({ showAllAccounts: !st.showAllAccounts })}
               onTab={setTab}
               onOpenModal={setModal}
-              onToggleFixed={finance.toggleFixedPaid}
+              onToggleFixed={handleToggleFixed}
               onNewFixed={() => handleOpenFixedModal(null)}
               onAddInvestment={() => handleOpenInvestmentModal(null)}
             />
@@ -114,10 +127,8 @@ export default function App() {
 
           {tab === 'investments' && (
             <Investments
-              investments={st.investments}
-              hideSaved={st.hideSaved}
-              totalSaved={finance.totalSaved}
-              currentMonth={st.currentMonth}
+              state={st}
+              onChangeMonth={finance.changeMonth}
               onAdd={() => handleOpenInvestmentModal(null)}
               onEdit={handleOpenInvestmentModal}
               onDelete={finance.deleteInvestment}
@@ -129,7 +140,7 @@ export default function App() {
               state={st}
               onChangeMonth={finance.changeMonth}
               onAddAccount={() => handleOpenAccountModal(null)}
-              onEditAccount={(acc) => handleOpenAccountModal(acc)}
+              onEditAccount={handleOpenAccountModal}
               onDeleteAccount={finance.deleteAccount}
               onMoveAccount={finance.moveAccount}
               onAddCard={() => handleOpenCardModal(null)}
@@ -138,6 +149,15 @@ export default function App() {
               onEditCategory={handleOpenCategoryModal}
               onSaveShortcuts={(l) => finance.update({ shortcuts: l })}
               onSaveNav={(l) => finance.update({ navItems: l })}
+              onSelectPack={finance.setMascotPack}
+              onSelectMascotColor={(color) => finance.update({ mascotColor: color })}
+              onUploadMascot={finance.saveMascot}
+              onRemoveMascot={finance.removeMascot}
+              onToggleAnime={() => finance.update({ animeTheme: !st.animeTheme })}
+              onSelectAnimeCharacter={(character, animeId = st.animeId) => finance.update({
+                animeCharacter: character,
+                animeId
+              })}
               onToggleFollow={() => finance.update({ followCursor: !st.followCursor })}
               onToggleSaved={() => finance.update({ hideSaved: !st.hideSaved })}
               onLogout={doLogout}
@@ -176,11 +196,14 @@ export default function App() {
       </Modal>
 
       <Modal open={modal === 'modal-investment'} onClose={() => { setModal(null); setInvestmentToEdit(null); }} title={investmentToEdit ? 'Editar Rendimento' : 'Novo Rendimento'}>
-        <InvestmentForm
-          accounts={st.accounts}
-          investmentToEdit={investmentToEdit}
-          onSubmit={(d, id) => { finance.saveInvestment(d, id); setModal(null); setInvestmentToEdit(null); }}
-        />
+        {modal === 'modal-investment' && (
+          <InvestmentForm
+            key={investmentToEdit?.id || 'new'}
+            accounts={st.accounts}
+            investmentToEdit={investmentToEdit}
+            onSubmit={(d, id) => { finance.saveInvestment(d, id); setModal(null); setInvestmentToEdit(null); }}
+          />
+        )}
       </Modal>
 
       <Modal open={modal === 'modal-account'} onClose={() => { setModal(null); setAccountToEdit(null); }} title={accountToEdit ? 'Editar Conta' : 'Nova Conta'}>
@@ -230,6 +253,18 @@ export default function App() {
             fixed={fixedToEdit}
             monthLabel={monthLabel}
             onChoose={(scope) => { finance.deactivateFixed(fixedToEdit.id, scope); closeFixed(); }}
+          />
+        )}
+      </Modal>
+
+      <Modal open={modal === 'modal-fixed-pay'} onClose={closeFixed} title={fixedToEdit?.type === 'income' ? 'Quando recebeu?' : 'Quando pagou?'}>
+        {modal === 'modal-fixed-pay' && (
+          <PayFixedForm
+            key={fixedToEdit?.id}
+            fixed={fixedToEdit}
+            month={st.currentMonth}
+            year={st.currentYear}
+            onChoose={(date) => { finance.toggleFixedPaid(fixedToEdit, date); closeFixed(); }}
           />
         )}
       </Modal>

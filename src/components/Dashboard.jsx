@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Check, ChevronDown, ChevronRight, CreditCard, Eye, EyeOff, Gauge, Minus, PiggyBank, Plus, Receipt, Repeat, TrendingUp, Wallet,
+  Check, ChevronDown, ChevronLeft, ChevronRight, CreditCard, Eye, EyeOff, Gauge, Minus, PieChart,
+  PiggyBank, Plus, Receipt, Repeat, SlidersHorizontal, TrendingUp, Wallet,
 } from 'lucide-react';
-import { mascots, speechBubbles } from '../store';
 import { money, moneyShort } from '../utils/format';
 import { fmtShort } from '../utils/invoices';
 import { SHORTCUTS, safeShortcuts } from '../utils/config';
+import { months } from '../store';
+import buildMessages from '../utils/mascotMessages';
 import MonthBar from './MonthBar';
 import CategoryIcon from './CategoryIcon';
+import Mascot from './Mascot';
 
-function ArcGauge({ percent, children }) {
+function ArcGauge({ percent, over, children }) {
   const cx = 120, cy = 120, r = 104;
   const pt = (deg) => {
     const a = (deg * Math.PI) / 180;
@@ -22,11 +25,23 @@ function ArcGauge({ percent, children }) {
   return (
     <div className="relative w-full max-w-[300px] aspect-square mx-auto">
       <svg viewBox="0 0 240 240" className="absolute inset-0 w-full h-full">
-        <path d={d} fill="none" stroke="#FF5A1F" strokeWidth="14" strokeLinecap="round" pathLength="100" />
+        <defs>
+          <linearGradient id="lilac" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%" stopColor="#C4B5FD" />
+            <stop offset="100%" stopColor="#8B5CF6" />
+          </linearGradient>
+        </defs>
+        <path d={d} fill="none" stroke="#E2E2E8" strokeWidth="14" strokeLinecap="round" pathLength="100" />
         {p > 0 && (
           <path
-            d={d} fill="none" stroke="#E11D48" strokeWidth="14" strokeLinecap="round"
-            pathLength="100" strokeDasharray={`${p} 100`} style={{ transition: 'stroke-dasharray .6s ease' }}
+            d={d}
+            fill="none"
+            stroke={over ? '#E11D48' : 'url(#lilac)'}
+            strokeWidth="14"
+            strokeLinecap="round"
+            pathLength="100"
+            strokeDasharray={`${p} 100`}
+            style={{ transition: 'stroke-dasharray .6s ease, stroke .3s ease' }}
           />
         )}
       </svg>
@@ -58,6 +73,7 @@ export default function Dashboard({
 }) {
   const [openCat, setOpenCat] = useState(null);
   const [off, setOff] = useState({ x: 0, y: 0 });
+  const [idx, setIdx] = useState(0);
   const mascotRef = useRef(null);
 
   useEffect(() => {
@@ -77,6 +93,9 @@ export default function Dashboard({
   }, [state.followCursor]);
 
   const { currentMonth: month, currentYear: year } = state;
+
+  useEffect(() => { setIdx(0); }, [month, year]);
+
   const today = new Date();
   const dim = new Date(year, month + 1, 0).getDate();
   const isCurrent = today.getMonth() === month && today.getFullYear() === year;
@@ -92,9 +111,9 @@ export default function Dashboard({
   const whole = Math.floor(shown);
   const cents = String(Math.round((shown - whole) * 100)).padStart(2, '0');
 
-  const bubble = mascotState === 'normal'
-    ? `Mês novo, limite cheio: ${moneyShort(totalAvailable)}. Respira antes de abrir o iFood.`
-    : speechBubbles[mascotState];
+  const messages = buildMessages({ state, remaining, daysLeft, isCurrent, totalSaved });
+  const cur = ((idx % messages.length) + messages.length) % messages.length;
+  const step = (d) => setIdx((i) => i + d);
 
   const expenseFixeds = state.fixeds.filter((f) => f.type !== 'income');
   const allPaid = expenseFixeds.length > 0 && expenseFixeds.every((f) => state.paidFixed[f.id]);
@@ -112,12 +131,14 @@ export default function Dashboard({
     income: { icon: <Plus size={22} />, run: () => onOpenModal('modal-income') },
     statement: { icon: <Receipt size={22} />, run: () => onTab('statement') },
     investments: { icon: <PiggyBank size={22} />, run: () => onTab('investments') },
+    planejar: { icon: <PieChart size={22} />, run: () => onTab('charts') },
+    settings: { icon: <SlidersHorizontal size={22} />, run: () => onTab('settings') },
   };
 
   const Action = ({ icon, label, onClick }) => (
-    <button onClick={onClick} className="flex flex-col items-center gap-2 flex-1">
+    <button onClick={onClick} className="flex flex-col items-center gap-2">
       <span className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center">{icon}</span>
-      <span className="font-medium">{label}</span>
+      <span className="font-medium text-center text-sm">{label}</span>
     </button>
   );
 
@@ -131,27 +152,58 @@ export default function Dashboard({
     </div>
   );
 
+  const fixedSub = (f) => {
+    const paid = state.paidFixed[f.id];
+    if (!paid) return `dia ${f.day} · pendente`;
+    const verb = f.type === 'income' ? 'recebido' : 'pago';
+    const d = paid.date ? paid.date.split('-').reverse().slice(0, 2).join('/') : '';
+    if (paid.late) return `dia ${f.day} · ${verb} com atraso em ${d}`;
+    if (paid.dueDate && paid.date && paid.date !== paid.dueDate) return `dia ${f.day} · ${verb} antes em ${d}`;
+    return `dia ${f.day} · ${verb}`;
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <MonthBar month={month} year={year} onChange={onChangeMonth} onFilter={() => onTab('settings')} />
 
-      <div className="relative bg-black text-white text-center rounded-3xl px-5 py-4 font-medium mx-2">
-        {bubble}
+      <div className="relative bg-black text-white text-center rounded-3xl px-12 py-4 font-medium mx-2 min-h-[84px] flex flex-col items-center justify-center gap-2">
+        <p key={`${cur}-${messages[cur]}`} className="msg-in">{messages[cur]}</p>
+        {messages.length > 1 && (
+          <>
+            <button type="button" onClick={() => step(-1)} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/15 flex items-center justify-center">
+              <ChevronLeft size={18} />
+            </button>
+            <button type="button" onClick={() => step(1)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/15 flex items-center justify-center">
+              <ChevronRight size={18} />
+            </button>
+            <div className="flex gap-1">
+              {messages.map((_, i) => (
+                <span key={i} className={`h-1 rounded-full transition-all ${i === cur ? 'w-4 bg-violet-300' : 'w-1 bg-white/30'}`} />
+              ))}
+            </div>
+          </>
+        )}
         <span className="absolute left-1/2 -bottom-2 -translate-x-1/2 w-4 h-4 bg-black rotate-45" />
       </div>
 
-      <ArcGauge percent={percent}>
+      <ArcGauge percent={percent} over={over}>
         <div
           ref={mascotRef}
           className="w-[42%] aspect-square transition-transform duration-100"
           style={{ transform: `translate(${off.x}px, ${off.y}px)` }}
-          dangerouslySetInnerHTML={{ __html: mascots[mascotState] }}
-        />
+        >
+          <Mascot
+            mood={mascotState}
+            pack={state.mascotPack}
+            custom={state.customMascots}
+            color={state.mascotColor}
+          />
+        </div>
       </ArcGauge>
 
       <div className="text-center -mt-16">
         <p className="text-gray-600">{over ? 'Estourou em' : 'Pode gastar'}</p>
-        <p className={`font-extrabold text-6xl tracking-tight ${over ? 'text-rose-600' : ''}`}>
+        <p className={`font-display text-6xl ${over ? 'text-rose-600' : ''}`}>
           {over && '-'}R$ {whole.toLocaleString('pt-BR')}
           <span className="text-3xl">,{cents}</span>
         </p>
@@ -161,7 +213,7 @@ export default function Dashboard({
         </span>
       </div>
 
-      <div className="flex">
+      <div className="grid grid-cols-4 gap-y-5">
         {safeShortcuts(state.shortcuts).map((id) => (
           <Action key={id} icon={SC[id].icon} label={SHORTCUTS[id]} onClick={SC[id].run} />
         ))}
@@ -210,7 +262,7 @@ export default function Dashboard({
                       </p>
                     </div>
                     <div className="h-1.5 rounded-full bg-gray-200 mt-2 overflow-hidden">
-                      <div className={`h-full rounded-full ${isOver ? 'bg-rose-600' : 'bg-black'}`} style={{ width: `${pct}%` }} />
+                      <div className={`h-full rounded-full ${isOver ? 'bg-rose-600' : 'bg-violet-500'}`} style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                   <ChevronDown size={18} className={`text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
@@ -251,17 +303,17 @@ export default function Dashboard({
         ) : (
           <div className="flex flex-col divide-y divide-gray-100">
             {state.fixeds.map((f) => {
-              const paid = !!state.paidFixed[f.id];
+              const paid = state.paidFixed[f.id];
               return (
                 <button key={f.id} onClick={() => onToggleFixed(f)} className="flex items-center gap-3 text-left py-3">
-                  <span className={`w-7 h-7 rounded-full border-2 flex items-center justify-center ${paid ? 'bg-black border-black text-white' : 'border-gray-300'}`}>
+                  <span className={`w-7 h-7 shrink-0 rounded-full border-2 flex items-center justify-center ${paid ? (paid.late ? 'bg-rose-600 border-rose-600 text-white' : 'bg-black border-black text-white') : 'border-gray-300'}`}>
                     {paid && <Check size={14} />}
                   </span>
-                  <div className="flex-1">
-                    <p className="font-semibold">{f.name}</p>
-                    <p className="text-gray-400 text-sm">dia {f.day} · {paid ? (f.type === 'income' ? 'recebido' : 'pago') : 'pendente'}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold truncate">{f.name}</p>
+                    <p className={`text-sm ${paid?.late ? 'text-rose-500' : 'text-gray-400'}`}>{fixedSub(f)}</p>
                   </div>
-                  <p className="font-bold">{f.type === 'income' ? '+' : '-'}{money(f.amount)}</p>
+                  <p className="font-bold whitespace-nowrap">{f.type === 'income' ? '+' : '-'}{money(f.amount)}</p>
                 </button>
               );
             })}
@@ -277,7 +329,7 @@ export default function Dashboard({
               return (
                 <button key={inv.card.id} onClick={() => onTab('invoices')} className="text-left py-3">
                   <p className="text-gray-500">Cartão {inv.card.name}</p>
-                  <p className="font-extrabold text-3xl">{money(inv.total)}</p>
+                  <p className="font-display text-3xl">{money(inv.total)}</p>
                   <div className="flex justify-between text-sm text-gray-400 mt-1">
                     <span>Fecha {fmtShort(inv.close)} (em {days} dias) · vence {fmtShort(inv.due)}</span>
                     <span>{inv.items.length} compras</span>
@@ -291,7 +343,7 @@ export default function Dashboard({
 
       <Card icon={<Wallet size={18} />} title="Saldo nas contas">
         <div className="flex items-center justify-between py-2">
-          <p className="font-extrabold text-2xl">{state.hideTotalBalance ? 'R$ ••••' : money(totalBalance)}</p>
+          <p className="font-display text-3xl">{state.hideTotalBalance ? 'R$ ••••' : money(totalBalance)}</p>
           <button onClick={onToggleBalance} className="w-10 h-10 rounded-full bg-[#f2f2f2] flex items-center justify-center">
             {state.hideTotalBalance ? <EyeOff size={18} /> : <Eye size={18} />}
           </button>
@@ -315,9 +367,12 @@ export default function Dashboard({
       </Card>
 
       {!state.hideSaved && (
-        <button onClick={() => onTab('investments')} className="bg-white rounded-[28px] p-5 shadow-sm flex items-center justify-between">
-          <span className="flex items-center gap-2 text-gray-600 font-semibold"><PiggyBank size={18} /> Guardado</span>
-          <span className="flex items-center gap-1 font-bold">{money(totalSaved)} <ChevronRight size={16} /></span>
+        <button onClick={() => onTab('investments')} className="bg-white rounded-[28px] p-5 shadow-sm text-left">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-2 text-gray-600 font-semibold"><PiggyBank size={18} /> Rendeu em {months[month].toLowerCase()}</span>
+            <span className="flex items-center gap-1 font-bold">{money(totalSaved)} <ChevronRight size={16} /></span>
+          </div>
+          <p className="text-gray-400 text-sm mt-1">No ano de {year}: {money(state.yearSaved)}</p>
         </button>
       )}
     </div>
