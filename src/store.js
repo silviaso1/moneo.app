@@ -274,35 +274,35 @@ export const defaultCategories = [
     id: 'mercado',
     name: 'Mercado e alimentação',
     icon: 'ShoppingCart',
-    limit: 400,
+    limit: 0,
     order: 0
   },
   {
     id: 'restaurantes',
     name: 'Restaurantes e delivery',
     icon: 'Utensils',
-    limit: 200,
+    limit: 0,
     order: 1
   },
   {
     id: 'transporte',
     name: 'Transporte',
     icon: 'Car',
-    limit: 200,
+    limit: 0,
     order: 2
   },
   {
     id: 'lazer',
     name: 'Lazer, compras e pessoal',
     icon: 'PartyPopper',
-    limit: 100,
+    limit: 0,
     order: 3
   },
   {
     id: 'saude',
     name: 'Saúde e imprevistos',
     icon: 'HeartPulse',
-    limit: 84.06,
+    limit: 0,
     order: 4
   }
 ];
