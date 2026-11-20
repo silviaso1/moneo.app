@@ -23,8 +23,8 @@ import PayFixedForm from './components/PayFixedForm';
 import CardForm from './components/CardForm';
 import MascotChat from './components/MascotChat';
 import { months } from './store';
-import { safeNav, safeTheme } from './utils/config';
-import { money } from './utils/format'; // IMPORTANTE: importar money
+import { safeNav, safeTheme, THEME_COLORS } from './utils/config';
+import { money } from './utils/format';
 
 export default function App() {
   const { user, logout } = useAuth();
@@ -50,7 +50,10 @@ export default function App() {
 
   const st = finance.state;
   const monthLabel = months[st.currentMonth].toLowerCase();
-  const theme = safeTheme(st.themeColor);
+  const themeId = safeTheme(st.themeColor);
+  
+  // CORREÇÃO AQUI: Busca as cores no objeto THEME_COLORS
+  const themeColors = THEME_COLORS[themeId] || THEME_COLORS.purple;
 
   const dashboardState = st.animeTheme
     ? { ...st, mascotPack: `anime-${st.animeCharacter || 'gojo'}` }
@@ -103,7 +106,6 @@ export default function App() {
       </body></html>
     `;
 
-    // Cria um iframe invisível para impressão
     const iframe = document.createElement('iframe');
     iframe.style.position = 'absolute';
     iframe.style.width = '0px';
@@ -125,7 +127,18 @@ export default function App() {
   };
 
   return (
-    <div data-theme={theme} className="w-full min-h-screen flex justify-center">
+    <div 
+      className="w-full min-h-screen flex justify-center"
+      style={{
+        // INJETANDO AS VARIÁVEIS DIRETAMENTE AQUI
+        '--accent-from': themeColors.from,
+        '--accent-to': themeColors.to,
+        '--accent-soft': themeColors.soft,
+        '--accent-text': themeColors.text,
+        '--accent-rgb': themeColors.rgb,
+        '--accent-soft-rgb': themeColors.softRgb,
+      }}
+    >
       <div className="w-full max-w-[1100px] relative flex flex-col pb-[120px] px-[5%] md:px-[10%]">
         <header className="sticky top-0 z-30 pt-5 pb-2 bg-transparent ">
           <Header
@@ -243,7 +256,6 @@ export default function App() {
         items={safeNav(st.navItems)}
       />
 
-      {/* ===== MODAL DE NOVO LANÇAMENTO (Gasto/Receita) ===== */}
       <Modal open={txOpen} onClose={() => setModal(null)} title="Novo lançamento">
         {txOpen && (
           <TransactionForm
@@ -258,7 +270,6 @@ export default function App() {
         )}
       </Modal>
 
-      {/* ===== MODAL DE CHAT COM MASCOTE ===== */}
       <Modal open={chatOpen} onClose={() => setChatOpen(false)} title="Chat">
         {chatOpen && (
           <MascotChat
@@ -269,7 +280,6 @@ export default function App() {
         )}
       </Modal>
 
-      {/* ===== OUTROS MODAIS ===== */}
       <Modal open={modal === 'modal-investment'} onClose={() => { setModal(null); setInvestmentToEdit(null); }} title={investmentToEdit ? 'Editar Rendimento' : 'Novo Rendimento'}>
         {modal === 'modal-investment' && (
           <InvestmentForm

@@ -24,10 +24,10 @@ export default function MascotChat({ state, finance, onDownloadPDF }) {
   const [input, setInput] = useState('');
   const endRef = useRef(null);
 
-  // Pega as cores exatas do tema atual
-  const themeColors = THEME_COLORS.find(t => t.id === state.themeColor) || THEME_COLORS[0];
-  const colorMain = themeColors?.to || '#8B5CF6';
-  const colorSoft = themeColors?.from || '#C4B5FD';
+  // CORREÇÃO AQUI: Busca no objeto
+  const themeColors = THEME_COLORS[state.themeColor] || THEME_COLORS.purple;
+  const colorMain = themeColors.to;
+  const colorSoft = themeColors.from;
 
   const isAnime = state.animeTheme;
   const activePackId = isAnime ? `anime-${state.animeCharacter || 'gojo'}` : state.mascotPack;
