@@ -1,381 +1,423 @@
-
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+    collection, doc, onSnapshot, setDoc, addDoc, deleteDoc,
+    writeBatch, increment,
+} from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import {
-    collection,
-    doc,
-    onSnapshot,
-    addDoc,
-    deleteDoc,
-    updateDoc,
-    writeBatch,
-    setDoc
-} from 'firebase/firestore';
+import { defaultCategories } from '../store';
+import { todayISO } from '../utils/format';
+import { monthKey, pad, fixedAt, versionAt, existsAt, deactivate, reactivate } from '../utils/fixeds';
+import { buildInvoice, currentKey } from '../utils/invoices';
+
+const defaults = {
+    followCursor: true,
+    hideSaved: false,
+    hideTotalBalance: false,
+    showAllAccounts: false,
+    totalLimit: null,
+    shortcuts: null,
+    navItems: null,
+};
+
+const COLS = ['accounts', 'transactions', 'investments', 'categories', 'fixeds', 'cards'];
+
+const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+const sum = (arr, fn) => arr.reduce((s, x) => s + (Number(fn(x)) || 0), 0);
+const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.name).localeCompare(String(b.name));
 
 export default function useFinance() {
     const { user } = useAuth();
+    const uid = user?.uid;
 
-    const [state, setState] = useState({
-        currentMonth: new Date().getMonth(),
-        limit: 984,
-        transactions: [],
-        investments: [],
-        accounts: [],
-        followCursor: true,
-        hideSaved: false,
-        hideTotalBalance: false,
-        showAllAccounts: false,
+    const now = new Date();
+    const [month, setMonth] = useState(now.getMonth());
+    const [year, setYear] = useState(now.getFullYear());
+    const [data, setData] = useState({
+        accounts: [], transactions: [], investments: [], categories: [], fixeds: [], cards: [],
     });
+    const [settings, setSettings] = useState(defaults);
+    const [ready, setReady] = useState({});
+    const applying = useRef(new Set());
 
-    const [loading, setLoading] = useState(true);
+    const key = monthKey(year, month);
+    const col = (n) => collection(db, 'users', uid, n);
+    const dref = (n, id) => doc(db, 'users', uid, n, id);
 
-    const userDocRef = user ? doc(db, 'users', user.uid) : null;
-    const accountsRef = user ? collection(db, 'users', user.uid, 'accounts') : null;
-    const transactionsRef = user ? collection(db, 'users', user.uid, 'transactions') : null;
-    const investmentsRef = user ? collection(db, 'users', user.uid, 'investments') : null;
-
-    // Configurações do usuário
     useEffect(() => {
-        if (!userDocRef) return;
+        if (!uid) return;
+        setReady({});
+        const mark = (k) => setReady((r) => ({ ...r, [k]: true }));
 
-        const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
+        const sub = (name) =>
+            onSnapshot(
+                collection(db, 'users', uid, name),
+                (snap) => {
+                    setData((d) => ({ ...d, [name]: snap.docs.map((x) => ({ id: x.id, ...x.data() })) }));
+                    mark(name);
+                },
+                (err) => { console.error(name, err); mark(name); }
+            );
 
-                setState((s) => ({
-                    ...s,
-                    limit: data.limit ?? 984,
-                    followCursor: data.followCursor ?? true,
-                    hideSaved: data.hideSaved ?? false,
-                    hideTotalBalance: data.hideTotalBalance ?? false,
-                }));
-            } else {
-                setDoc(userDocRef, {
-                    limit: 984,
-                    followCursor: true,
-                    hideSaved: false,
-                    hideTotalBalance: false
-                });
+        const unsubs = COLS.map(sub);
+
+        unsubs.push(
+            onSnapshot(doc(db, 'users', uid), async (snap) => {
+                const d = snap.data() || {};
+                setSettings({ ...defaults, ...d });
+                mark('user');
+                if (!d.seeded) {
+                    const b = writeBatch(db);
+                    defaultCategories.forEach(({ id, ...rest }) => b.set(doc(db, 'users', uid, 'categories', id), rest));
+                    b.set(doc(db, 'users', uid), { seeded: true }, { merge: true });
+                    try { await b.commit(); } catch (e) { console.error(e); }
+                }
+            })
+        );
+
+        return () => unsubs.forEach((u) => u());
+    }, [uid]);
+
+    const loading = !!uid && ![...COLS, 'user'].every((k) => ready[k]);
+
+    const accounts = useMemo(() => [...data.accounts].sort(byOrder), [data.accounts]);
+    const categories = useMemo(() => [...data.categories].sort(byOrder), [data.categories]);
+    const cards = useMemo(() => [...data.cards].sort(byOrder), [data.cards]);
+
+    // aplica no saldo as transações futuras (parcelas) quando a data chega
+    useEffect(() => {
+        if (!uid || !ready.transactions || !ready.accounts) return;
+        const today = todayISO();
+        const pending = data.transactions.filter(
+            (t) => t.accountId && t.applied === false && t.date <= today && !applying.current.has(t.id)
+        );
+        if (!pending.length) return;
+        const b = writeBatch(db);
+        pending.forEach((t) => {
+            applying.current.add(t.id);
+            b.update(dref('transactions', t.id), { applied: true });
+            if (accounts.some((a) => a.id === t.accountId)) {
+                b.update(dref('accounts', t.accountId), { balance: increment(t.type === 'expense' ? -t.amount : t.amount) });
             }
         });
-
-        return () => unsubscribe();
-    }, [userDocRef]);
-
-    // Contas bancárias
-    useEffect(() => {
-        if (!accountsRef) return;
-
-        const unsubscribe = onSnapshot(accountsRef, (snapshot) => {
-            const accounts = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-
-            accounts.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
-
-            setState((s) => ({ ...s, accounts }));
+        b.commit().catch((e) => {
+            console.error(e);
+            pending.forEach((t) => applying.current.delete(t.id));
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data.transactions, accounts, ready, uid]);
 
-        return () => unsubscribe();
-    }, [accountsRef]);
-
-    // Transações
-    useEffect(() => {
-        if (!transactionsRef) return;
-
-        const unsubscribe = onSnapshot(transactionsRef, (snapshot) => {
-            const transactions = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-
-            transactions.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-            setState((s) => ({ ...s, transactions }));
-        });
-
-        return () => unsubscribe();
-    }, [transactionsRef]);
-
-    // Investimentos
-    useEffect(() => {
-        if (!investmentsRef) return;
-
-        const unsubscribe = onSnapshot(investmentsRef, (snapshot) => {
-            const investments = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-
-            setState((s) => ({ ...s, investments }));
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [investmentsRef]);
-
-    // Atualizar preferências
-    const updatePreferences = useCallback(async (patch) => {
-        setState((s) => ({ ...s, ...patch }));
-
-        if (userDocRef) {
-            await updateDoc(userDocRef, patch);
-        }
-    }, [userDocRef]);
-
-    // Alterar mês
-    const changeMonth = useCallback((dir) => {
-        setState((s) => {
-            const nm = s.currentMonth + dir;
-
-            if (nm < 0 || nm > 11) return s;
-
-            return { ...s, currentMonth: nm };
-        });
-    }, []);
-
-    // Dados do mês atual
-    const getCurrentMonthData = () => {
-        const monthTx = state.transactions.filter(tx => {
-            if (!tx.date) return false;
-
-            const [, month] = tx.date.split('/');
-
-            return parseInt(month) - 1 === state.currentMonth;
-        });
-
-        const spent = monthTx
-            .filter(tx => tx.type === 'expense')
-            .reduce((acc, tx) => acc + tx.value, 0);
-
-        const income = monthTx
-            .filter(tx => tx.type === 'income')
-            .reduce((acc, tx) => acc + tx.value, 0);
-
-        return { spent, income, monthTx };
-    };
-
-    const { spent, income } = getCurrentMonthData();
-
-    // Saldo total
-    const totalSaved = state.investments.reduce(
-        (a, b) => a + (b.value || 0), 0
+    // fixos válidos para o mês visualizado
+    const activeFixeds = useMemo(
+        () => data.fixeds.map((f) => fixedAt(f, key)).filter(Boolean).sort((a, b) => (a.day || 1) - (b.day || 1)),
+        [data.fixeds, key]
+    );
+    const inactiveFixeds = useMemo(
+        () =>
+            data.fixeds
+                .filter((f) => !fixedAt(f, key) && existsAt(f, key))
+                .map((f) => versionAt(f, key))
+                .filter(Boolean),
+        [data.fixeds, key]
     );
 
-    const totalBalance = state.accounts.reduce(
-        (a, b) => a + (b.balance || 0), 0
-    ) + totalSaved;
+    const monthTransactions = useMemo(
+        () =>
+            data.transactions
+                .filter((t) => t.month === month && t.year === year)
+                .sort((a, b) => String(b.date).localeCompare(String(a.date)) || (b.createdAt || 0) - (a.createdAt || 0)),
+        [data.transactions, month, year]
+    );
 
-    // Limite disponível
-    const totalAvailable = state.limit + income;
+    const calc = useMemo(() => {
+        const eff = (t) => (Number(t.amount) || 0) - (t.receivable ? Number(t.receivableAmount) || 0 : 0);
 
-    const percent = totalAvailable > 0
-        ? Math.min((spent / totalAvailable) * 100, 100)
-        : 0;
+        const dailyExp = monthTransactions.filter((t) => t.type === 'expense' && !t.fixedId);
+        const dailySpent = sum(dailyExp, eff);
 
-    const remaining = Math.max(totalAvailable - spent, 0);
+        const categorySpent = {};
+        const addCat = (id, v) => { const k = id || '_none'; categorySpent[k] = (categorySpent[k] || 0) + v; };
+        dailyExp.forEach((t) => addCat(t.categoryId, eff(t)));
 
-    // Estado da mascote
-    const mascotState = useMemo(() => {
-        if (percent >= 100) return 'angry';
-        if (percent > 80) return 'sad';
-        if (percent > 50) return 'normal';
-        if (percent < 30 && spent > 0) return 'happy';
+        const fixedExp = activeFixeds.filter((f) => f.type !== 'income');
+        fixedExp.forEach((f) => addCat(f.categoryId, Number(f.amount) || 0));
 
-        return 'normal';
-    }, [percent, spent]);
+        const fixedExpenseTotal = sum(fixedExp, (f) => f.amount);
+        const fixedIncomeTotal = sum(activeFixeds.filter((f) => f.type === 'income'), (f) => f.amount);
 
-    // Adicionar transação
-    const addTransaction = useCallback(async (type, data) => {
-        if (!user) return;
+        const spent = dailySpent + fixedExpenseTotal; // fixos contam pro limite
+        const categoriesLimit = sum(categories, (c) => c.limit);
+        const limit = settings.totalLimit != null ? Number(settings.totalLimit) || 0 : categoriesLimit;
 
-        const isExpense = type === 'expense';
-        const value = parseFloat(data.value);
+        const paidFixed = {};
+        monthTransactions.forEach((t) => { if (t.fixedId) paidFixed[t.fixedId] = t; });
 
-        if (!value || value <= 0) return;
+        const extraIncome = sum(
+            monthTransactions.filter((t) => t.type === 'income' && !t.fixedId && !t.reimbursementOf),
+            (t) => t.amount
+        );
+        const income = extraIncome + fixedIncomeTotal;
+        const sobra = income - fixedExpenseTotal - dailySpent;
 
-        await addDoc(transactionsRef, {
-            type,
-            value,
-            desc: data.desc || (isExpense ? 'Gasto' : 'Receita'),
-            bank: data.bank,
-            method: isExpense ? data.method : 'Pix',
-            category: isExpense ? data.category : 'Receita',
-            date: new Date().toLocaleDateString('pt-BR'),
-            createdAt: new Date().toISOString()
+        return { dailySpent, spent, limit, categoriesLimit, categorySpent, paidFixed, fixedIncomeTotal, fixedExpenseTotal, income, sobra };
+    }, [monthTransactions, categories, activeFixeds, settings.totalLimit]);
+
+    const remaining = calc.limit - calc.spent;
+    const percent = calc.limit > 0 ? Math.min(100, (calc.spent / calc.limit) * 100) : calc.spent > 0 ? 100 : 0;
+    const totalSaved = sum(data.investments, (i) => i.amount ?? i.value ?? 0);
+    const totalBalance = sum(accounts, (a) => a.balance);
+
+    const anyCategoryOver = categories.some(
+        (c) => Number(c.limit) > 0 && (calc.categorySpent[c.id] || 0) > Number(c.limit)
+    );
+    const mascotState =
+        remaining < 0 ? 'sad' : anyCategoryOver ? 'angry' : calc.spent > 0 && percent <= 50 ? 'happy' : 'normal';
+
+    const invoices = useMemo(() => cards.map((c) => buildInvoice(c, data.transactions, key)), [cards, data.transactions, key]);
+    const openInvoices = useMemo(
+        () => cards.map((c) => buildInvoice(c, data.transactions, currentKey(c))),
+        [cards, data.transactions]
+    );
+
+    const state = {
+        ...settings,
+        currentMonth: month,
+        currentYear: year,
+        monthKey: key,
+        accounts,
+        categories,
+        cards,
+        invoices,
+        openInvoices,
+        fixeds: activeFixeds,
+        inactiveFixeds,
+        investments: data.investments,
+        transactions: data.transactions,
+        monthTransactions,
+        limit: calc.limit,
+        categoriesLimit: calc.categoriesLimit,
+        spent: calc.spent,
+        dailySpent: calc.dailySpent,
+        income: calc.income,
+        sobra: calc.sobra,
+        fixedIncomeTotal: calc.fixedIncomeTotal,
+        fixedExpenseTotal: calc.fixedExpenseTotal,
+        categorySpent: calc.categorySpent,
+        paidFixed: calc.paidFixed,
+    };
+
+    // ---------- ações ----------
+    const changeMonth = (delta) => {
+        let m = month + delta;
+        let y = year;
+        if (m < 0) { m = 11; y -= 1; }
+        if (m > 11) { m = 0; y += 1; }
+        setMonth(m);
+        setYear(y);
+    };
+
+    const update = (patch) => setDoc(doc(db, 'users', uid), clean(patch), { merge: true });
+
+    // lançamentos (suporta parcelas, cartão e "receber de volta")
+    const addTransaction = async (type, d) => {
+        const total = Number(d.amount) || 0;
+        if (total <= 0) return;
+        const n = Math.max(1, Math.min(60, Number(d.installments) || 1));
+        const [y0, m0, d0] = (d.date || todayISO()).split('-').map(Number);
+        const isCard = cards.some((c) => c.id === d.accountId);
+        const isAcc = accounts.some((a) => a.id === d.accountId);
+        const today = todayISO();
+        const groupId = n > 1 ? `g${Date.now()}` : null;
+        const base = Math.floor((total / n) * 100) / 100;
+        const fixedInst = n > 1 ? Math.round((Number(d.installmentAmount) || 0) * 100) / 100 : 0;
+        const recvTotal = type === 'expense' && d.receivable ? Math.min(total, Number(d.receivableAmount) || total) : 0;
+        const b = writeBatch(db);
+
+        for (let i = 0; i < n; i++) {
+            const amt = fixedInst > 0 ? fixedInst : i === n - 1 ? Math.round((total - base * (n - 1)) * 100) / 100 : base;
+            const dim = new Date(y0, m0 - 1 + i + 1, 0).getDate();
+            const dt = new Date(y0, m0 - 1 + i, Math.min(d0, dim));
+            const date = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+            const applied = !isAcc || date <= today;
+            b.set(doc(col('transactions')), {
+                type,
+                amount: amt,
+                categoryId: d.categoryId || null,
+                accountId: isAcc ? d.accountId : null,
+                cardId: isCard ? d.accountId : null,
+                note: d.note || '',
+                date,
+                month: dt.getMonth(),
+                year: dt.getFullYear(),
+                fixedId: d.fixedId || null,
+                installment: n > 1 ? { n: i + 1, of: n } : null,
+                groupId,
+                receivable: recvTotal > 0,
+                receivableAmount: recvTotal > 0 ? Math.round((recvTotal / n) * 100) / 100 : 0,
+                received: false,
+                applied,
+                createdAt: Date.now() + i,
+            });
+            if (isAcc && applied) {
+                b.update(dref('accounts', d.accountId), { balance: increment(type === 'expense' ? -amt : amt) });
+            }
+        }
+        await b.commit();
+    };
+
+    const deleteTransaction = async (t) => {
+        const b = writeBatch(db);
+        b.delete(dref('transactions', t.id));
+        if (t.accountId && t.applied !== false && accounts.some((a) => a.id === t.accountId)) {
+            b.update(dref('accounts', t.accountId), { balance: increment(t.type === 'expense' ? t.amount : -t.amount) });
+        }
+        await b.commit();
+    };
+
+    const markReceived = async (t) => {
+        const amt = Number(t.receivableAmount) || 0;
+        if (amt <= 0) return;
+        const acc = accounts.find((a) => a.id === t.accountId)?.id || accounts[0]?.id || null;
+        const date = todayISO();
+        const [y, m] = date.split('-').map(Number);
+        const b = writeBatch(db);
+        b.update(dref('transactions', t.id), { received: true });
+        b.set(doc(col('transactions')), {
+            type: 'income', amount: amt, categoryId: null, accountId: acc, cardId: null,
+            note: `Reembolso: ${t.note || 'gasto'}`, date, month: m - 1, year: y,
+            fixedId: null, reimbursementOf: t.id, applied: true, createdAt: Date.now(),
         });
+        if (acc) b.update(dref('accounts', acc), { balance: increment(amt) });
+        await b.commit();
+    };
 
-        const account = state.accounts.find(a => a.name === data.bank);
+    // contas
+    const saveAccount = async (d, id) => {
+        const payload = clean({ ...d, balance: d.balance !== undefined ? Number(d.balance) || 0 : undefined });
+        delete payload.id;
+        if (id) return setDoc(dref('accounts', id), payload, { merge: true });
+        return addDoc(col('accounts'), { ...payload, order: accounts.length });
+    };
+    const deleteAccount = (id) => deleteDoc(dref('accounts', id));
+    const moveAccount = async (id, dir) => {
+        const list = [...accounts];
+        const i = list.findIndex((a) => a.id === id);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= list.length) return;
+        [list[i], list[j]] = [list[j], list[i]];
+        const b = writeBatch(db);
+        list.forEach((a, idx) => b.update(dref('accounts', a.id), { order: idx }));
+        await b.commit();
+    };
 
-        if (account) {
-            const accountRef = doc(
-                db,
-                'users',
-                user.uid,
-                'accounts',
-                account.id
-            );
+    // cartões
+    const saveCard = async (d, id) => {
+        const payload = {
+            name: d.name,
+            closingDay: Math.min(31, Math.max(1, Number(d.closingDay) || 1)),
+            dueDay: Math.min(31, Math.max(1, Number(d.dueDay) || 1)),
+            limit: Number(d.limit) || 0,
+            color: d.color || '#000000',
+        };
+        if (id) return setDoc(dref('cards', id), payload, { merge: true });
+        return addDoc(col('cards'), { ...payload, order: cards.length });
+    };
+    const deleteCard = (id) => deleteDoc(dref('cards', id));
 
-            await updateDoc(accountRef, {
-                balance: isExpense
-                    ? account.balance - value
-                    : account.balance + value
+    // categorias e limites
+    const saveCategory = async (d, id) => {
+        const payload = { name: d.name, icon: d.icon || 'Tag', limit: Number(d.limit) || 0 };
+        if (id) return setDoc(dref('categories', id), payload, { merge: true });
+        return addDoc(col('categories'), { ...payload, order: categories.length });
+    };
+    const deleteCategory = (id) => deleteDoc(dref('categories', id));
+    const updateLimit = (id, value) => setDoc(dref('categories', id), { limit: Number(value) || 0 }, { merge: true });
+    const updateTotalLimit = (value) => update({ totalLimit: value === null ? null : Number(value) || 0 });
+
+    // fixos (recorrentes até desativar; editar só vale daqui pra frente)
+    const saveFixed = async (d, id) => {
+        const v = {
+            name: d.name,
+            amount: Number(d.amount) || 0,
+            type: d.type === 'income' ? 'income' : 'expense',
+            day: Math.min(31, Math.max(1, Number(d.day) || 1)),
+            categoryId: d.categoryId || null,
+            accountId: d.accountId || null,
+            note: d.note || '',
+        };
+        if (!id) {
+            return addDoc(col('fixeds'), {
+                ranges: [{ from: key, to: null }], skipped: [], versions: [{ from: key, ...v }], createdAt: Date.now(),
             });
         }
-    }, [user, state.accounts, transactionsRef]);
-
-    // Adicionar investimento
-    const addInvestment = useCallback(async (data) => {
-        if (!user) return;
-
-        const value = parseFloat(data.value);
-
-        if (!value || value <= 0 || !data.day) return;
-
-        await addDoc(investmentsRef, {
-            value,
-            day: data.day,
-            bank: data.bank,
-            date: new Date().toLocaleDateString('pt-BR')
+        const f = data.fixeds.find((x) => x.id === id);
+        const versions = (f?.versions || []).filter((x) => x.from < key).concat({ from: key, ...v });
+        return setDoc(dref('fixeds', id), { versions }, { merge: true });
+    };
+    const deactivateFixed = (id, scope) => {
+        const f = data.fixeds.find((x) => x.id === id);
+        if (f) return setDoc(dref('fixeds', id), deactivate(f, key, scope), { merge: true });
+    };
+    const reactivateFixed = (id) => {
+        const f = data.fixeds.find((x) => x.id === id);
+        if (f) return setDoc(dref('fixeds', id), reactivate(f, key), { merge: true });
+    };
+    const toggleFixedPaid = async (f) => {
+        const paid = calc.paidFixed[f.id];
+        if (paid) return deleteTransaction(paid);
+        const dim = new Date(year, month + 1, 0).getDate();
+        const date = `${year}-${pad(month + 1)}-${pad(Math.min(f.day || 1, dim))}`;
+        return addTransaction(f.type, {
+            amount: f.amount, accountId: f.accountId, categoryId: f.categoryId, note: f.name, date, fixedId: f.id,
         });
-    }, [user, investmentsRef]);
+    };
 
-    // Excluir investimento
-    const deleteInvestment = useCallback(async (id) => {
-        if (!user) return;
+    // investimentos (o rendimento cai na conta escolhida)
+    const invAmt = (i) => Number(i?.amount ?? i?.value ?? 0) || 0;
+    const invAcc = (i) => i?.accountId ?? i?.account ?? null;
 
-        await deleteDoc(
-            doc(db, 'users', user.uid, 'investments', id)
-        );
-    }, [user]);
+    const saveInvestment = async (d, id) => {
+        const payload = clean({ ...d });
+        delete payload.id;
+        const newAcc = invAcc(payload);
+        const newAmt = invAmt(payload);
+        const credit = !!newAcc && accounts.some((a) => a.id === newAcc) && newAmt > 0;
+        payload.credited = credit;
 
-    // Salvar conta
-    const saveAccount = useCallback(async (data, accountId = null) => {
-        if (!user || !data.name) return;
+        const old = id ? data.investments.find((x) => x.id === id) : null;
+        const deltas = {};
+        if (old?.credited && invAcc(old)) deltas[invAcc(old)] = (deltas[invAcc(old)] || 0) - invAmt(old);
+        if (credit) deltas[newAcc] = (deltas[newAcc] || 0) + newAmt;
 
-        const accountData = {
-            name: data.name,
-            balance: parseFloat(data.balance) || 0,
-            color: data.color,
-            type: data.type || 'Conta Corrente',
-            desc: data.desc || '',
-        };
-
-        if (accountId) {
-            await updateDoc(
-                doc(db, 'users', user.uid, 'accounts', accountId),
-                accountData
-            );
-        } else {
-            await addDoc(accountsRef, {
-                ...accountData,
-                order: state.accounts.length
-            });
-        }
-    }, [user, accountsRef, state.accounts.length]);
-
-    // Excluir conta
-    const deleteAccount = useCallback(async (id) => {
-        if (!user) return;
-
-        if (state.accounts.length <= 1) {
-            alert('Você precisa ter pelo menos uma conta.');
-            return;
-        }
-
-        await deleteDoc(
-            doc(db, 'users', user.uid, 'accounts', id)
-        );
-    }, [user, state.accounts.length]);
-
-    // Reordenar contas
-    const moveAccount = useCallback(async (id, direction) => {
-        if (!user) return;
-
-        const idx = state.accounts.findIndex(a => a.id === id);
-        const ni = idx + direction;
-
-        if (idx === -1 || ni < 0 || ni >= state.accounts.length) return;
-
-        const newAccounts = [...state.accounts];
-
-        [newAccounts[idx], newAccounts[ni]] = [
-            newAccounts[ni],
-            newAccounts[idx]
-        ];
-
-        const batch = writeBatch(db);
-
-        newAccounts.forEach((acc, index) => {
-            batch.update(
-                doc(db, 'users', user.uid, 'accounts', acc.id),
-                { order: index }
-            );
+        const b = writeBatch(db);
+        if (id) b.set(dref('investments', id), payload, { merge: true });
+        else b.set(doc(col('investments')), { ...payload, createdAt: Date.now() });
+        Object.entries(deltas).forEach(([accId, v]) => {
+            if (v && accounts.some((a) => a.id === accId)) b.update(dref('accounts', accId), { balance: increment(v) });
         });
+        await b.commit();
+    };
 
-        await batch.commit();
-    }, [user, state.accounts]);
-
-    // Atualizar limite
-    const updateLimit = useCallback((val) => {
-        const n = parseFloat(val);
-
-        if (n > 0) {
-            updatePreferences({ limit: n });
+    const deleteInvestment = async (id) => {
+        const old = data.investments.find((x) => x.id === id);
+        const b = writeBatch(db);
+        b.delete(dref('investments', id));
+        const accId = invAcc(old);
+        if (old?.credited && accId && accounts.some((a) => a.id === accId)) {
+            b.update(dref('accounts', accId), { balance: increment(-invAmt(old)) });
         }
-    }, [updatePreferences]);
-
-    // Salvar ou editar investimento
-    const saveInvestment = useCallback(async (data, investmentId = null) => {
-        if (!user) return;
-
-        const value = parseFloat(data.value);
-
-        if (!value || value <= 0 || !data.day) return;
-
-        const invData = {
-            value,
-            day: data.day,
-            bank: data.bank,
-            desc: data.desc || '',
-            date: new Date().toLocaleDateString('pt-BR')
-        };
-
-        if (investmentId) {
-            await updateDoc(
-                doc(db, 'users', user.uid, 'investments', investmentId),
-                invData
-            );
-        } else {
-            await addDoc(investmentsRef, invData);
-        }
-    }, [user, investmentsRef]);
+        await b.commit();
+    };
 
     return {
-        state: {
-            ...state,
-            spent,
-            income,
-            totalSaved
-        },
-        loading,
-        update: updatePreferences,
-        changeMonth,
-        totalBalance,
-        totalSaved,
-        totalAvailable,
-        percent,
-        remaining,
-        mascotState,
-        addTransaction,
-        addInvestment,
-        deleteInvestment,
-        saveAccount,
-        deleteAccount,
-        moveAccount,
-        updateLimit,
-        saveInvestment,
+        loading, state, percent, remaining,
+        totalAvailable: calc.limit, mascotState, totalBalance, totalSaved,
+        changeMonth, update,
+        addTransaction, deleteTransaction, markReceived,
+        saveAccount, deleteAccount, moveAccount,
+        saveCard, deleteCard,
+        saveCategory, deleteCategory, updateLimit, updateTotalLimit,
+        saveFixed, deactivateFixed, reactivateFixed, toggleFixedPaid,
+        saveInvestment, deleteInvestment,
     };
 }
