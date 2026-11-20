@@ -2,9 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { Send } from 'lucide-react';
 import { money } from '../utils/format';
 import { months, animeCatalog, mascotPacks } from '../store';
+import { THEME_COLORS } from '../utils/config';
 import Mascot from './Mascot';
 
-// LISTA ESTENDIDA DE CONVERSAS
 const QUICK = [
   'Quanto gastei este mês?',
   'E no ano?',
@@ -24,13 +24,17 @@ export default function MascotChat({ state, finance, onDownloadPDF }) {
   const [input, setInput] = useState('');
   const endRef = useRef(null);
 
+  // Pega as cores exatas do tema atual
+  const themeColors = THEME_COLORS.find(t => t.id === state.themeColor) || THEME_COLORS[0];
+  const colorMain = themeColors?.to || '#8B5CF6';
+  const colorSoft = themeColors?.from || '#C4B5FD';
+
   const isAnime = state.animeTheme;
   const activePackId = isAnime ? `anime-${state.animeCharacter || 'gojo'}` : state.mascotPack;
   const activeName = isAnime 
     ? (animeCatalog[state.animeId]?.characters[state.animeCharacter]?.name || 'Gojo')
     : (mascotPacks[state.mascotPack]?.name || 'Mascote');
 
-  // Define a mensagem inicial baseada no humor
   useEffect(() => {
     if (messages.length === 0) {
       let greeting = `Oi! Eu sou o ${activeName}. Como posso ajudar com suas finanças?`;
@@ -46,10 +50,8 @@ export default function MascotChat({ state, finance, onDownloadPDF }) {
 
   const answerFor = (q) => {
     const t = q.toLowerCase();
-    // O pulo do gato: se achar UMA palavra-chave na frase inteira, ele responde.
     const has = (...words) => words.some(w => t.includes(w));
 
-    // 1. SAUDAÇÕES E BRINCADEIRAS
     if (has('oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'tudo bem', 'eae')) {
       const res = {
         normal: `Oi! Tudo bem? Pronto para organizar as finanças?`,
@@ -73,7 +75,6 @@ export default function MascotChat({ state, finance, onDownloadPDF }) {
       return jokes[Math.floor(Math.random() * jokes.length)];
     }
 
-    // 2. PERSONALIDADE ANIME
     if (isAnime) {
       if (state.animeCharacter === 'gojo') {
         if (has('forte', 'melhor', 'top', 'ganhar', 'win', 'fraco')) return "Nah, I'd win. Eu sou o mais forte. Seus gastos estão sob controle?";
@@ -85,7 +86,6 @@ export default function MascotChat({ state, finance, onDownloadPDF }) {
       }
     }
 
-    // 3. FINANÇAS (RESPOSTAS FLEXÍVEIS)
     if (has('mês', 'mes', 'mensal', 'gastei', 'gasto', 'gastando')) {
       const rest = state.limit - state.spent;
       return `Em ${months[state.currentMonth].toLowerCase()} você já gastou ${money(state.spent)}. Seu limite é ${money(state.limit)}. ${rest >= 0 ? `Ainda sobram ${money(rest)}.` : `Você estourou em ${money(Math.abs(rest))}.`}`;
@@ -121,7 +121,6 @@ export default function MascotChat({ state, finance, onDownloadPDF }) {
       return 'Dica: tente manter os gastos do dia a dia abaixo de 60% do limite. Assim não passa aperto no fim do mês.';
     }
 
-    // 4. FALLBACK (Se não entender nada, tenta pelo menos ser educado)
     return `Hmm, não entendi exatamente, mas se quiser saber sobre gastos, limites, contas ou juros, é só me perguntar!`;
   };
 
@@ -134,7 +133,6 @@ export default function MascotChat({ state, finance, onDownloadPDF }) {
 
   return (
     <div className="flex flex-col h-[75vh] gap-3">
-      {/* MASCOTE NO TOPO */}
       <div className="flex flex-col items-center justify-center shrink-0 pt-2 pb-2">
         <div className="w-28 h-28">
           <Mascot mood={finance.mascotState} pack={activePackId} custom={state.customMascots} color={state.mascotColor} />
@@ -142,35 +140,51 @@ export default function MascotChat({ state, finance, onDownloadPDF }) {
         <p className="text-sm font-bold text-gray-500 mt-2">{activeName}</p>
       </div>
 
-      {/* ÁREA DE MENSAGENS */}
       <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2 pr-1 pb-2">
         {messages.map((m, i) => (
-          <div key={i} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.from === 'user' ? 'self-end bg-black text-white' : 'self-start bg-[var(--accent-soft)] text-[var(--accent-text)]'}`}>
+          <div 
+            key={i} 
+            className="max-w-[85%] rounded-2xl px-3 py-2 text-sm"
+            style={
+              m.from === 'user' 
+                ? { backgroundColor: colorMain, color: '#fff', alignSelf: 'flex-end' } 
+                : { backgroundColor: `${colorSoft}40`, color: colorMain, alignSelf: 'flex-start' }
+            }
+          >
             {m.text}
           </div>
         ))}
         <div ref={endRef} />
       </div>
 
-      {/* LISTA DE ATALHOS */}
       <div className="flex flex-wrap gap-1.5 shrink-0">
         {QUICK.map((q) => (
-          <button key={q} onClick={() => send(q)} className="text-xs px-2.5 py-1.5 rounded-full bg-[#f2f2f2] text-gray-700 font-medium hover:bg-[var(--accent-soft)] transition">
+          <button 
+            key={q} 
+            onClick={() => send(q)} 
+            className="text-xs px-2.5 py-1.5 rounded-full bg-[#f2f2f2] text-gray-700 font-medium transition-colors"
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = colorSoft; e.currentTarget.style.color = colorMain; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#f2f2f2'; e.currentTarget.style.color = '#374151'; }}
+          >
             {q}
           </button>
         ))}
       </div>
 
-      {/* INPUT */}
       <div className="flex gap-2 pt-2 border-t border-gray-100 shrink-0">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && send()}
           placeholder="Pergunte algo..."
-          className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent-from)]"
+          className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black"
         />
-        <button onClick={() => send()} className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center" title="Enviar">
+        <button 
+          onClick={() => send()} 
+          className="w-10 h-10 rounded-xl text-white flex items-center justify-center transition-opacity hover:opacity-80" 
+          style={{ backgroundColor: colorMain }}
+          title="Enviar"
+        >
           <Send size={16} />
         </button>
       </div>

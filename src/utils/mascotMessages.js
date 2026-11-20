@@ -1,4 +1,4 @@
-import { months } from '../store';
+import { months, animeCatalog, mascotPacks } from '../store';
 import { moneyShort, todayISO } from './format';
 
 const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
@@ -14,6 +14,11 @@ export default function buildMessages({ state, remaining, daysLeft, isCurrent, t
   const todayStr = todayISO();
   const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const catName = (id) => categories.find((c) => c.id === id)?.name || 'Sem categoria';
+
+  const isAnime = state.animeTheme;
+  const activeName = isAnime 
+    ? (animeCatalog[state.animeId]?.characters[state.animeCharacter]?.name || 'Gojo')
+    : (mascotPacks[state.mascotPack]?.name || 'Skunk');
 
   if (categories.length === 0) {
     add(60, 'Cria suas categorias em Ajustes que eu fico bem mais esperto.');
@@ -39,7 +44,7 @@ export default function buildMessages({ state, remaining, daysLeft, isCurrent, t
   }
 
   if (spent === 0) {
-    add(isCurrent ? 60 : 20, `Nada gasto em ${name} ainda. Limite cheio: ${moneyShort(limit)}. Respira antes de abrir o iFood.`);
+    add(isCurrent ? 60 : 20, `Nada gasto em ${name} ainda. Limite cheio: ${moneyShort(limit)}. Parabéns!`);
   } else {
     const top = categories
       .map((c) => ({ c, v: categorySpent[c.id] || 0 }))
@@ -104,7 +109,7 @@ export default function buildMessages({ state, remaining, daysLeft, isCurrent, t
   }
 
   if (totalSaved > 0) {
-    add(25, `Rendeu ${moneyShort(totalSaved)} em ${name}. O Skunk aprova.`);
+    add(25, `Rendeu ${moneyShort(totalSaved)} em ${name}. O ${activeName} aprova.`);
   }
 
   if (income > 0) {
