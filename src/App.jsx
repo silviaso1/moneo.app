@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import useFinance from './hooks/useFinance';
@@ -9,6 +8,8 @@ import Transactions from './components/Transactions';
 import Investments from './components/Investments';
 import Settings from './components/Settings';
 import Planejar from './components/Planejar';
+import Graphs from './components/Graphs';
+import Family from './components/Family';
 import Invoices from './components/Invoices';
 import BottomNav from './components/BottomNav';
 import Modal from './components/Modal';
@@ -20,14 +21,17 @@ import FixedForm from './components/FixedForm';
 import FixedOffForm from './components/FixedOffForm';
 import PayFixedForm from './components/PayFixedForm';
 import CardForm from './components/CardForm';
+import MascotChat from './components/MascotChat';
 import { months } from './store';
-import { safeNav } from './utils/config';
+import { safeNav, safeTheme } from './utils/config';
+import { money } from './utils/format'; // IMPORTANTE: importar money
 
 export default function App() {
   const { user, logout } = useAuth();
   const finance = useFinance();
   const [tab, setTab] = useState('dashboard');
   const [modal, setModal] = useState(null);
+  const [chatOpen, setChatOpen] = useState(false);
   const [accountToEdit, setAccountToEdit] = useState(null);
   const [investmentToEdit, setInvestmentToEdit] = useState(null);
   const [categoryToEdit, setCategoryToEdit] = useState(null);
@@ -46,15 +50,13 @@ export default function App() {
 
   const st = finance.state;
   const monthLabel = months[st.currentMonth].toLowerCase();
+  const theme = safeTheme(st.themeColor);
 
   const dashboardState = st.animeTheme
     ? { ...st, mascotPack: `anime-${st.animeCharacter || 'gojo'}` }
     : st;
 
-  const doLogout = () => {
-    logout();
-    setTab('dashboard');
-  };
+  const doLogout = () => { logout(); setTab('dashboard'); };
 
   const handleOpenAccountModal = (acc = null) => { setAccountToEdit(acc); setModal('modal-account'); };
   const handleOpenInvestmentModal = (inv = null) => { setInvestmentToEdit(inv); setModal('modal-investment'); };
@@ -64,10 +66,7 @@ export default function App() {
   const handleOpenCardModal = (card = null) => { setCardToEdit(card); setModal('modal-card'); };
 
   const handleToggleFixed = (f) => {
-    if (st.paidFixed[f.id]) {
-      finance.toggleFixedPaid(f);
-      return;
-    }
+    if (st.paidFixed[f.id]) { finance.toggleFixedPaid(f); return; }
     setFixedToEdit(f);
     setModal('modal-fixed-pay');
   };
@@ -75,14 +74,68 @@ export default function App() {
   const closeFixed = () => { setModal(null); setFixedToEdit(null); };
   const txOpen = modal === 'modal-expense' || modal === 'modal-income';
 
+  const handleDownloadPDF = (period) => {
+    const title = period === 'year' ? `Relatório Anual ${st.currentYear}` : `Relatório ${months[st.currentMonth]} / ${st.currentYear}`;
+
+    const rows = [
+      ['Limite', money(st.limit)],
+      ['Gasto', money(st.spent)],
+      ['Sobra', money(st.limit - st.spent)],
+      ['Receitas fixas', money(st.fixedIncomeTotal)],
+      ['Despesas fixas', money(st.fixedExpenseTotal)],
+      ['Juros do mês', money(st.monthInvestments.reduce((s, i) => s + Number(i.amount || 0), 0))],
+      ['Juros no ano', money(st.yearSaved)],
+    ];
+
+    const html = `
+      <html><head><title>${title}</title>
+      <style>
+        body{font-family:Inter,Arial,sans-serif;padding:40px;color:#111}
+        h1{font-size:24px;margin:0 0 8px} h2{font-size:16px;margin:24px 0 8px;color:#555}
+        table{width:100%;border-collapse:collapse;font-size:14px;margin-bottom:24px}
+        th,td{padding:10px;border-bottom:1px solid #eee;text-align:left}
+        th{background:#fafafa;font-weight:600} .muted{color:#999;font-size:12px}
+      </style></head><body>
+      <h1>${title}</h1>
+      <p class="muted">Gerado em ${new Date().toLocaleString('pt-BR')}</p>
+      <h2>Resumo Financeiro</h2>
+      <table>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>
+      </body></html>
+    `;
+
+    // Cria um iframe invisível para impressão
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0px';
+    iframe.style.height = '0px';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+    }, 2000);
+  };
+
   return (
-    <div className="w-full min-h-screen flex justify-center">
+    <div data-theme={theme} className="w-full min-h-screen flex justify-center">
       <div className="w-full max-w-[1100px] relative flex flex-col pb-[120px] px-[5%] md:px-[10%]">
-        <header className="sticky top-0 z-3 pt-5 pb-2">
+        <header className="sticky top-0 z-30 pt-5 pb-2 bg-transparent ">
           <Header
             onSettings={() => setTab('settings')}
             showBack={tab !== 'dashboard'}
             onBack={() => setTab('dashboard')}
+            familyMode={finance.familyMode}
+            onFamily={() => setTab('family')}
+            onChat={() => setChatOpen(true)}
+            onDownloadPDF={handleDownloadPDF}
           />
         </header>
 
@@ -115,6 +168,9 @@ export default function App() {
               onReceived={finance.markReceived}
             />
           )}
+
+          {tab === 'graphs' && <Graphs state={st} onChangeMonth={finance.changeMonth} />}
+          {tab === 'family' && <Family />}
 
           {tab === 'invoices' && (
             <Invoices
@@ -156,10 +212,11 @@ export default function App() {
               onToggleAnime={() => finance.update({ animeTheme: !st.animeTheme })}
               onSelectAnimeCharacter={(character, animeId = st.animeId) => finance.update({
                 animeCharacter: character,
-                animeId
+                animeId,
               })}
               onToggleFollow={() => finance.update({ followCursor: !st.followCursor })}
               onToggleSaved={() => finance.update({ hideSaved: !st.hideSaved })}
+              onSelectTheme={(id) => finance.update({ themeColor: id })}
               onLogout={doLogout}
             />
           )}
@@ -179,22 +236,40 @@ export default function App() {
         </div>
       </div>
 
-      <BottomNav tab={tab} onTab={setTab} onAdd={() => setModal('modal-expense')} items={safeNav(st.navItems)} />
+      <BottomNav
+        tab={tab}
+        onTab={setTab}
+        onAdd={() => setModal('modal-expense')}
+        items={safeNav(st.navItems)}
+      />
 
+      {/* ===== MODAL DE NOVO LANÇAMENTO (Gasto/Receita) ===== */}
       <Modal open={txOpen} onClose={() => setModal(null)} title="Novo lançamento">
         {txOpen && (
           <TransactionForm
             key={modal}
             initialType={modal === 'modal-income' ? 'income' : 'expense'}
-            accounts={st.accounts}
-            cards={st.cards}
-            categories={st.categories}
+            accounts={st.accounts || []}
+            cards={st.cards || []}
+            categories={st.categories || []}
             remaining={finance.remaining}
             onSubmit={(type, d) => { finance.addTransaction(type, d); setModal(null); }}
           />
         )}
       </Modal>
 
+      {/* ===== MODAL DE CHAT COM MASCOTE ===== */}
+      <Modal open={chatOpen} onClose={() => setChatOpen(false)} title="Chat">
+        {chatOpen && (
+          <MascotChat
+            state={st}
+            finance={finance}
+            onDownloadPDF={handleDownloadPDF}
+          />
+        )}
+      </Modal>
+
+      {/* ===== OUTROS MODAIS ===== */}
       <Modal open={modal === 'modal-investment'} onClose={() => { setModal(null); setInvestmentToEdit(null); }} title={investmentToEdit ? 'Editar Rendimento' : 'Novo Rendimento'}>
         {modal === 'modal-investment' && (
           <InvestmentForm

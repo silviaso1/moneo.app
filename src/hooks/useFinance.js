@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   collection, doc, onSnapshot, setDoc, addDoc, deleteDoc,
-  writeBatch, increment,
+  writeBatch, increment, getDoc,
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,7 +19,10 @@ const defaults = {
   totalLimit: null,
   shortcuts: null,
   navItems: null,
-  mascotPack: 'preto',
+  mascotPack: 'skunk',
+  themeColor: 'purple',
+  familyMode: false,
+  familyId: null,
 };
 
 const COLS = ['accounts', 'transactions', 'investments', 'categories', 'fixeds', 'cards', 'mascots'];
@@ -43,6 +46,7 @@ export default function useFinance() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth());
   const [year, setYear] = useState(now.getFullYear());
+
   const [data, setData] = useState({
     accounts: [], transactions: [], investments: [], categories: [], fixeds: [], cards: [], mascots: [],
   });
@@ -51,17 +55,24 @@ export default function useFinance() {
   const applying = useRef(new Set());
 
   const key = monthKey(year, month);
-  const col = (n) => collection(db, 'users', uid, n);
-  const dref = (n, id) => doc(db, 'users', uid, n, id);
 
+  // Caminho base: família se estiver ativo, senão pessoal
+  const familyMode = !!settings.familyMode && !!settings.familyId;
+  const baseRoot = familyMode ? 'families' : 'users';
+  const baseId = familyMode ? settings.familyId : uid;
+
+  const col = (n) => collection(db, baseRoot, baseId, n);
+  const dref = (n, id) => doc(db, baseRoot, baseId, n, id);
+
+  // Assinatura das subcoleções
   useEffect(() => {
-    if (!uid) return;
+    if (!uid || !baseId) return;
     setReady({});
     const mark = (k) => setReady((r) => ({ ...r, [k]: true }));
 
     const sub = (name) =>
       onSnapshot(
-        collection(db, 'users', uid, name),
+        collection(db, baseRoot, baseId, name),
         (snap) => {
           setData((d) => ({ ...d, [name]: snap.docs.map((x) => ({ id: x.id, ...x.data() })) }));
           mark(name);
@@ -71,12 +82,19 @@ export default function useFinance() {
 
     const unsubs = COLS.map(sub);
 
+    // Assinatura do doc raiz (settings)
     unsubs.push(
-      onSnapshot(doc(db, 'users', uid), async (snap) => {
+      onSnapshot(doc(db, baseRoot, baseId), async (snap) => {
         const d = snap.data() || {};
-        setSettings({ ...defaults, ...d });
+        setSettings((prev) => ({
+          ...defaults,
+          ...d,
+          // familyMode/familyId são SEMPRE do user pessoal, não do doc família
+          familyMode: prev.familyMode,
+          familyId: prev.familyId,
+        }));
         mark('user');
-        if (!d.seeded) {
+        if (!d.seeded && !familyMode) {
           const b = writeBatch(db);
           defaultCategories.forEach(({ id, ...rest }) => b.set(doc(db, 'users', uid, 'categories', id), rest));
           b.set(doc(db, 'users', uid), { seeded: true }, { merge: true });
@@ -86,6 +104,21 @@ export default function useFinance() {
     );
 
     return () => unsubs.forEach((u) => u());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, baseRoot, baseId, familyMode]);
+
+  // Sempre lê do user pessoal: familyMode + familyId (para saber qual modo usar)
+  useEffect(() => {
+    if (!uid) return;
+    const unsub = onSnapshot(doc(db, 'users', uid), (snap) => {
+      const d = snap.data() || {};
+      setSettings((prev) => ({
+        ...prev,
+        familyMode: !!d.familyMode,
+        familyId: d.familyId || null,
+      }));
+    });
+    return unsub;
   }, [uid]);
 
   const loading = !!uid && ![...COLS, 'user'].every((k) => ready[k]);
@@ -118,7 +151,7 @@ export default function useFinance() {
       pending.forEach((t) => applying.current.delete(t.id));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.transactions, accounts, ready, uid]);
+  }, [data.transactions, accounts, ready, uid, baseRoot, baseId]);
 
   const activeFixeds = useMemo(
     () => data.fixeds.map((f) => fixedAt(f, key)).filter(Boolean).sort((a, b) => (a.day || 1) - (b.day || 1)),
@@ -155,7 +188,7 @@ export default function useFinance() {
     fixedExp.forEach((f) => addCat(f.categoryId, Number(f.amount) || 0));
 
     const fixedExpenseTotal = sum(fixedExp, (f) => f.amount);
-    const fixedIncomeTotal = sum(activeFixeds.filter((f) => f.type === 'income'), (f) => f.amount);
+    const fixedIncomeTotal = sum(activeFixeds.filter((f) => f.type === 'income'), f => f.amount);
 
     const spent = dailySpent + fixedExpenseTotal;
     const categoriesLimit = sum(categories, (c) => c.limit);
@@ -205,7 +238,7 @@ export default function useFinance() {
 
   const invoices = useMemo(() => cards.map((c) => buildInvoice(c, data.transactions, key)), [cards, data.transactions, key]);
   const openInvoices = useMemo(
-    () => cards.map((c) => buildInvoice(c, data.transactions, currentKey(c))),
+    () => cards.map((c) => buildInvoice(c, currentKey(c))),
     [cards, data.transactions]
   );
 
@@ -249,7 +282,21 @@ export default function useFinance() {
     setYear(y);
   };
 
-  const update = (patch) => setDoc(doc(db, 'users', uid), clean(patch), { merge: true });
+  // update de settings: sempre no user pessoal (para familyMode/familyId)
+  // exceto temas/preferências que no modo família devem ir pra família
+  const update = (patch) => {
+    const personalKeys = ['familyMode', 'familyId'];
+    const personal = {};
+    const shared = {};
+    Object.entries(patch).forEach(([k, v]) => {
+      if (personalKeys.includes(k)) personal[k] = v;
+      else shared[k] = v;
+    });
+    // always merge personal keys into user
+    if (Object.keys(personal).length) setDoc(doc(db, 'users', uid), clean(personal), { merge: true });
+    // rest into current doc (family or user)
+    if (Object.keys(shared).length) setDoc(doc(db, baseRoot, baseId), clean(shared), { merge: true });
+  };
 
   const addTransaction = async (type, d) => {
     const total = Number(d.amount) || 0;
@@ -292,6 +339,9 @@ export default function useFinance() {
         received: false,
         applied,
         createdAt: Date.now() + i,
+        // extras para família:
+        authorUid: familyMode ? uid : null,
+        scope: d.scope || 'family',
       });
       if (isAcc && applied) {
         b.update(dref('accounts', d.accountId), { balance: increment(type === 'expense' ? -amt : amt) });
@@ -321,6 +371,7 @@ export default function useFinance() {
       type: 'income', amount: amt, categoryId: null, accountId: acc, cardId: null,
       note: `Reembolso: ${t.note || 'gasto'}`, date, month: m - 1, year: y,
       fixedId: null, reimbursementOf: t.id, applied: true, createdAt: Date.now(),
+      authorUid: familyMode ? uid : null,
     });
     if (acc) b.update(dref('accounts', acc), { balance: increment(amt) });
     await b.commit();
@@ -466,5 +517,6 @@ export default function useFinance() {
     saveFixed, deactivateFixed, reactivateFixed, toggleFixedPaid,
     saveInvestment, deleteInvestment,
     setMascotPack, saveMascot, removeMascot,
+    familyMode,
   };
 }

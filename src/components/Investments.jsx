@@ -39,10 +39,18 @@ export default function Investments({ state, onChangeMonth, onAdd, onEdit, onDel
         <span className="flex items-center gap-2 text-gray-600 font-semibold mb-4"><TrendingUp size={18} /> Mês a mês</span>
         <div className="flex items-end gap-1.5 h-28">
           {state.yearByMonth.map((v, i) => (
-            <div key={i} className="flex-1 h-full flex flex-col justify-end items-center gap-1">
+            <div key={i} className="flex-1 h-full flex flex-col justify-end items-center gap-1 group relative">
+              {/* TOOLTIP DO VALOR */}
+              <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                {show(v)}
+              </div>
               <div
-                className={`w-full rounded-t-lg ${i === state.currentMonth ? 'bg-black' : 'bg-violet-300'}`}
-                style={{ height: `${v > 0 ? Math.max(6, (v / max) * 100) : 3}%`, opacity: v > 0 ? 1 : 0.35 }}
+                className="w-full rounded-t-lg transition-all duration-300"
+                style={{
+                  height: `${v > 0 ? Math.max(6, (v / max) * 100) : 3}%`,
+                  backgroundColor: i === state.currentMonth ? 'var(--accent-to)' : 'var(--accent-soft)',
+                  opacity: v > 0 ? 1 : 0.35
+                }}
               />
             </div>
           ))}
@@ -71,7 +79,7 @@ export default function Investments({ state, onChangeMonth, onAdd, onEdit, onDel
                   <p className="font-semibold truncate">{i.note || i.name || 'Rendimento'}</p>
                   <p className="text-gray-400 text-sm truncate">{[fmt(i), accName(i)].filter(Boolean).join(' · ')}</p>
                 </div>
-                <p className="font-bold whitespace-nowrap text-emerald-600">+{show(i.amount ?? i.value ?? 0)}</p>
+                <p className="font-bold whitespace-nowrap text-black">+{show(i.amount ?? i.value ?? 0)}</p>
                 <button onClick={() => onEdit(i)} className="text-gray-400 p-1"><Pencil size={16} /></button>
                 <button
                   onClick={() => window.confirm('Excluir este rendimento?') && onDelete(i.id)}

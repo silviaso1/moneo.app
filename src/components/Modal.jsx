@@ -1,13 +1,22 @@
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+
 export default function Modal({ open, onClose, title, children }) {
-  return (
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  if (!open || !mounted) return null;
+
+  return createPortal(
     <div
-      className={`fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-end z-[99999] transition-opacity duration-300 ${open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+      className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-end z-[99999] transition-opacity duration-300 opacity-100 pointer-events-auto"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div
-        className={`bg-white w-full max-w-[500px] rounded-t-[32px] max-h-[90vh] flex flex-col transition-transform duration-300 ease-out ${open ? 'translate-y-0' : 'translate-y-full'}`}
-      >
-        {/* Header Fixo do Modal */}
+      <div className="bg-white w-full max-w-[500px] rounded-t-[32px] max-h-[90vh] flex flex-col transition-transform duration-300 ease-out translate-y-0">
         <div className="flex justify-between items-center p-6 pb-2 shrink-0 border-b border-transparent">
           <h3 className="text-xl font-bold text-black">{title}</h3>
           <button onClick={onClose} className="bg-[#f0f0f0] w-9 h-9 rounded-full flex justify-center items-center text-black">
@@ -18,11 +27,11 @@ export default function Modal({ open, onClose, title, children }) {
           </button>
         </div>
         
-        {/* Conteúdo Rolável */}
         <div className="p-6 pt-2 overflow-y-auto no-scrollbar flex-1 pb-12">
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

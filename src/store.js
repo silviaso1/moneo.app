@@ -239,20 +239,17 @@ export const speechBubbles = {
 
 // ESTADO INICIAL
 
+// ESTADO INICIAL — tudo zerado
 export const initialState = {
   currentMonth: 10,
-  limit: 984,
+  limit: 0,                 // era 984
   spent: 0,
   income: 0,
   transactions: [],
   investments: [],
 
-  accounts: [
-    { id: 1, name: 'Nubank', balance: 2450.0, color: '#8A05BE' },
-    { id: 2, name: 'Itaú', balance: 1200.5, color: '#EC7000' },
-    { id: 3, name: 'Carteira', balance: 150.0, color: '#000000' },
-    { id: 4, name: 'Inter', balance: 500.0, color: '#FF7A00' }
-  ],
+  accounts: [],            
+  cards: [],
 
   mascotPack: 'skunk',
   mascotColor: '#1A1A1A',
@@ -264,7 +261,8 @@ export const initialState = {
   followCursor: true,
   hideSaved: false,
   hideTotalBalance: false,
-  showAllAccounts: false
+  showAllAccounts: false,
+  themeColor: 'purple',     // NOVO — tema roxo padrão
 };
 
 // CATEGORIAS

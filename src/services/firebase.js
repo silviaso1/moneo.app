@@ -13,15 +13,9 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Inicializa o Firebase
 const app = initializeApp(firebaseConfig);
 
-// Inicializa Analytics (opcional, mas recomendado)
 export const analytics = getAnalytics(app);
-
-// Inicializa Auth e Firestore
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-
-// Configura o provedor do Google
 export const googleProvider = new GoogleAuthProvider();

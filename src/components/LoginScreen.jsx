@@ -37,7 +37,7 @@ export default function LoginScreen() {
   const [info, setInfo] = useState('');
 
   const isLogin = mode === 'login';
-  const input = 'w-full bg-white/80 border border-white rounded-full pl-12 pr-5 py-4 outline-none text-[16px] focus:border-violet-300';
+  const input = 'login-focus w-full bg-white/80 border border-white rounded-full pl-12 pr-5 py-4 outline-none text-[16px]';
 
   const wrap = async (fn) => {
     setBusy(true);
@@ -176,7 +176,7 @@ export default function LoginScreen() {
             )}
 
             {error && <p className="text-sm font-semibold text-rose-600 text-center">{error}</p>}
-            {info && <p className="text-sm font-semibold text-violet-600 text-center">{info}</p>}
+            {info && <p className="text-sm font-semibold text-center" style={{ color: 'var(--accent-text)' }}>{info}</p>}
 
             <button type="submit" disabled={busy} className="w-full bg-black text-white rounded-full py-4 font-semibold disabled:opacity-50 mt-1">
               {busy ? 'Aguarde...' : isLogin ? 'Entrar' : 'Criar conta'}

@@ -1,17 +1,20 @@
-
 import { useState, useEffect } from 'react';
 import {
   ChevronDown, ChevronRight, ChevronUp, CreditCard, ImagePlus,
-  Landmark, LayoutGrid, LogOut, Menu, Plus, Smile, Trash2, Upload, X
+  Landmark, LayoutGrid, LogOut, Menu, Plus, Smile, Upload, X, Save,
+  Palette, KeyRound, Trash2, ShieldAlert, UserCircle,
 } from 'lucide-react';
 import { money } from '../utils/format';
-import { SHORTCUTS, NAV, safeShortcuts, safeNav } from '../utils/config';
+import { SHORTCUTS, NAV, safeShortcuts, safeNav, THEME_COLORS } from '../utils/config';
 import { mascotPacks, animeCatalog } from '../store';
+import { brazilianBanks, getBankLogoUrl } from '../utils/banks';
+import { useAuth } from '../contexts/AuthContext';
 import MonthBar from './MonthBar';
 import CategoryIcon from './CategoryIcon';
 import GoogleLink from './GoogleLink';
 import Mascot from './Mascot';
 import { Switch } from './ui';
+import Modal from './Modal';
 
 function Section({ icon, title, onNew, children }) {
   return (
@@ -37,10 +40,27 @@ export default function Settings({
   onSaveShortcuts, onSaveNav,
   onSelectPack, onSelectMascotColor, onUploadMascot, onRemoveMascot,
   onToggleAnime, onSelectAnimeCharacter,
-  onToggleFollow, onToggleSaved, onLogout
+  onToggleFollow, onToggleSaved,
+  onSelectTheme,
+  onLogout,
 }) {
   const [busy, setBusy] = useState(null);
   const [colorDraft, setColorDraft] = useState(state.mascotColor || '#1A1A1A');
+  
+  const { user, isGoogleOnly, addEmailPassword, changePassword, deleteAccount, updateUserProfile } = useAuth();
+  const [name, setName] = useState(user?.displayName || '');
+  const [savingName, setSavingName] = useState(false);
+
+  const googleOnly = isGoogleOnly();
+
+  const [modalAuth, setModalAuth] = useState(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authCurrentPass, setAuthCurrentPass] = useState('');
+  const [authNewPass, setAuthNewPass] = useState('');
+  const [authPass2, setAuthPass2] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authInfo, setAuthInfo] = useState('');
 
   const sc = safeShortcuts(state.shortcuts);
   const nav = safeNav(state.navItems);
@@ -51,10 +71,23 @@ export default function Settings({
   const selectedAnimeCharacter = anime.characters[state.animeCharacter] ? state.animeCharacter : 'gojo';
 
   useEffect(() => setColorDraft(selectedColor), [selectedColor]);
+  useEffect(() => setName(user?.displayName || ''), [user]);
 
   const updateColor = (value) => {
     setColorDraft(value);
     if (/^#[0-9A-Fa-f]{6}$/.test(value)) onSelectMascotColor(value.toUpperCase());
+  };
+
+  const handleSaveName = async () => {
+    if (!name.trim()) return;
+    setSavingName(true);
+    try {
+      await updateUserProfile(name.trim());
+    } catch (e) {
+      alert('Erro ao atualizar nome.');
+    } finally {
+      setSavingName(false);
+    }
   };
 
   const moveSc = (i, dir) => {
@@ -90,9 +123,75 @@ export default function Settings({
     }
   };
 
+  const resetAuthForm = () => {
+    setAuthEmail('');
+    setAuthCurrentPass('');
+    setAuthNewPass('');
+    setAuthPass2('');
+    setAuthError('');
+    setAuthInfo('');
+    setAuthBusy(false);
+  };
+
+  const closeAuth = () => {
+    setModalAuth(null);
+    resetAuthForm();
+  };
+
+  const submitAddEmail = async () => {
+    setAuthError(''); setAuthInfo('');
+    if (!authEmail.trim() || authNewPass.length < 6) {
+      setAuthError('Preencha email e uma senha de 6+ caracteres.');
+      return;
+    }
+    if (authNewPass !== authPass2) { setAuthError('As senhas não batem.'); return; }
+    setAuthBusy(true);
+    try {
+      await addEmailPassword(authEmail.trim(), authNewPass);
+      setAuthInfo('Email e senha adicionados! Agora você pode entrar sem Google.');
+    } catch (e) {
+      setAuthError(
+        e.code === 'auth/email-already-in-use' ? 'Esse email já está em uso.' :
+        e.code === 'auth/requires-recent-login' ? 'Faça login de novo e tente rapidinho.' :
+        'Não deu certo.'
+      );
+    } finally { setAuthBusy(false); }
+  };
+
+  const submitChangePass = async () => {
+    setAuthError(''); setAuthInfo('');
+    if (authNewPass.length < 6) { setAuthError('A nova senha precisa ter 6+ caracteres.'); return; }
+    if (authNewPass !== authPass2) { setAuthError('As senhas não batem.'); return; }
+    setAuthBusy(true);
+    try {
+      await changePassword(authCurrentPass, authNewPass);
+      setAuthInfo('Senha alterada.');
+    } catch (e) {
+      setAuthError('Senha atual incorreta.');
+    } finally { setAuthBusy(false); }
+  };
+
+  const submitDelete = async () => {
+    setAuthError(''); setAuthInfo('');
+    if (!googleOnly && !authCurrentPass) {
+      setAuthError('Digite sua senha para confirmar.');
+      return;
+    }
+    setAuthBusy(true);
+    try {
+      await deleteAccount(authCurrentPass);
+    } catch (e) {
+      setAuthError(
+        e.code === 'auth/wrong-password' ? 'Senha incorreta.' :
+        e.code === 'auth/popup-closed-by-user' ? 'Cancelado.' :
+        'Não foi possível deletar.'
+      );
+      setAuthBusy(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-5">
-
       <h1 className="text-4xl">Ajustes</h1>
 
       <Section icon={<Landmark size={18} />} title="Contas e cartões" onNew={onAddAccount}>
@@ -107,25 +206,44 @@ export default function Settings({
               <ChevronRight size={18} className="text-gray-400" />
             </button>
           ))}
-          {(state.accounts || []).map((a, i) => (
-            <div key={a.id} className="flex items-center gap-2 py-3">
-              <button onClick={() => onEditAccount(a)} className="flex-1 flex items-center gap-3 text-left min-w-0">
-                <span className="w-12 h-12 shrink-0 rounded-full bg-[#f2f2f2] flex items-center justify-center">
-                  <span className="w-4 h-4 rounded-full" style={{ background: a.color || '#000' }} />
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold truncate">{a.name}</p>
-                  <p className="text-gray-400 text-sm">Conta · {money(a.balance)}</p>
+          {(state.accounts || []).map((a, i) => {
+            const bank = brazilianBanks.find(b => b.name === a.name);
+            const logoUrl = bank ? getBankLogoUrl(bank.ispb) : null;
+
+            return (
+              <div key={a.id} className="flex items-center gap-2 py-3">
+                <button onClick={() => onEditAccount(a)} className="flex-1 flex items-center gap-3 text-left min-w-0">
+                  <span className="w-12 h-12 shrink-0 rounded-full bg-[#f2f2f2] flex items-center justify-center overflow-hidden">
+                    {logoUrl ? (
+                      <img 
+                        src={logoUrl} 
+                        alt={a.name} 
+                        className="w-6 h-6 object-contain"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'block';
+                        }}
+                      />
+                    ) : null}
+                    <span 
+                      className={`w-4 h-4 rounded-full ${logoUrl ? 'hidden' : 'block'}`}
+                      style={{ background: a.color || '#000' }} 
+                    />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold truncate">{a.name}</p>
+                    <p className="text-gray-400 text-sm">Conta · {money(a.balance)}</p>
+                  </div>
+                  <ChevronRight size={18} className="text-gray-400" />
+                </button>
+                <div className="flex flex-col">
+                  <button disabled={i === 0} onClick={() => onMoveAccount(a.id, -1)} className="disabled:opacity-20"><ChevronUp size={16} /></button>
+                  <button disabled={i === (state.accounts || []).length - 1} onClick={() => onMoveAccount(a.id, 1)} className="disabled:opacity-20"><ChevronDown size={16} /></button>
                 </div>
-                <ChevronRight size={18} className="text-gray-400" />
-              </button>
-              <div className="flex flex-col">
-                <button disabled={i === 0} onClick={() => onMoveAccount(a.id, -1)} className="disabled:opacity-20"><ChevronUp size={16} /></button>
-                <button disabled={i === (state.accounts || []).length - 1} onClick={() => onMoveAccount(a.id, 1)} className="disabled:opacity-20"><ChevronDown size={16} /></button>
+                <button onClick={() => window.confirm(`Excluir a conta "${a.name}"?`) && onDeleteAccount(a.id)} className="text-gray-300 hover:text-rose-600 p-1"><Trash2 size={16} /></button>
               </div>
-              <button onClick={() => window.confirm(`Excluir a conta "${a.name}"?`) && onDeleteAccount(a.id)} className="text-gray-300 hover:text-rose-600 p-1"><Trash2 size={16} /></button>
-            </div>
-          ))}
+            );
+          })}
           {(state.accounts || []).length === 0 && (state.cards || []).length === 0 && <p className="text-gray-400 text-center py-3">Nenhuma conta ainda.</p>}
         </div>
         <button onClick={onAddCard} className="mt-2 w-full border-t border-gray-100 pt-4 flex items-center justify-center gap-1 font-semibold">
@@ -141,6 +259,25 @@ export default function Settings({
               <span className="w-12 h-12 shrink-0 rounded-full bg-[#f2f2f2] flex items-center justify-center"><CategoryIcon name={c.icon} /></span>
               <p className="flex-1 font-semibold truncate">{c.name}</p>
               <ChevronRight size={18} className="text-gray-400" />
+            </button>
+          ))}
+        </div>
+      </Section>
+
+      <Section icon={<Palette size={18} />} title="Tema do app">
+        <p className="text-gray-400 text-sm mb-3">Escolha a cor de destaque. O roxo é o padrão.</p>
+        <div className="flex flex-wrap gap-3">
+          {Object.entries(THEME_COLORS).map(([id, t]) => (
+            <button
+              key={id}
+              onClick={() => onSelectTheme(id)}
+              className={`flex flex-col items-center gap-1 p-2 rounded-2xl border-2 transition ${state.themeColor === id ? 'border-black' : 'border-transparent'}`}
+            >
+              <span
+                className="w-12 h-12 rounded-full border-2 border-white shadow"
+                style={{ background: `linear-gradient(135deg, ${t.from}, ${t.to})` }}
+              />
+              <span className="text-xs font-semibold">{t.name}</span>
             </button>
           ))}
         </div>
@@ -344,16 +481,173 @@ export default function Settings({
             <Switch on={state.followCursor} onClick={onToggleFollow} />
           </div>
           <div className="flex items-center justify-between py-3">
-            <span className="font-medium">Ocultar guardado</span>
+            <span className="font-medium">Ocultar juros</span>
             <Switch on={state.hideSaved} onClick={onToggleSaved} />
           </div>
         </div>
       </Section>
 
+      <Section icon={<UserCircle size={18} />} title="Meu Perfil">
+        <p className="text-gray-400 text-sm mb-3">Este nome aparecerá para sua família.</p>
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Nome e Sobrenome</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ex: João Silva"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-black transition"
+            />
+          </div>
+          <button
+            disabled={savingName || !name.trim() || name.trim() === user?.displayName}
+            onClick={handleSaveName}
+            className="bg-black text-white rounded-xl px-4 py-3 font-semibold flex items-center gap-2 "
+          >
+            <Save size={16} /> Salvar
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mt-2">
+          Se você entrou com o Google, puxamos o nome da sua conta. Você pode alterar se quiser.
+        </p>
+      </Section>
+
+      <Section icon={<UserCircle size={18} />} title="Conta e segurança">
+        <div className="flex flex-col divide-y divide-gray-100">
+
+          {!googleOnly && (
+            <button onClick={() => setModalAuth('change-pass')} className="flex items-center gap-3 py-4 text-left">
+              <span className="w-10 h-10 rounded-full bg-[#f2f2f2] flex items-center justify-center"><KeyRound size={18} /></span>
+              <div className="flex-1">
+                <p className="font-semibold">Redefinir senha</p>
+                <p className="text-gray-400 text-xs">Trocar a senha de acesso</p>
+              </div>
+              <ChevronRight size={18} className="text-gray-400" />
+            </button>
+          )}
+
+          {googleOnly && (
+            <button onClick={() => setModalAuth('add-email')} className="flex items-center gap-3 py-4 text-left">
+              <span className="w-10 h-10 rounded-full bg-[#f2f2f2] flex items-center justify-center"><KeyRound size={18} /></span>
+              <div className="flex-1">
+                <p className="font-semibold">Adicionar email e senha</p>
+                <p className="text-gray-400 text-xs">Sua conta só tem Google. Adicione outra forma de entrar.</p>
+              </div>
+              <ChevronRight size={18} className="text-gray-400" />
+            </button>
+          )}
+
+          <button onClick={() => setModalAuth('delete')} className="flex items-center gap-3 py-4 text-left text-rose-600">
+            <span className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center"><Trash2 size={18} /></span>
+            <div className="flex-1">
+              <p className="font-semibold">Deletar minha conta</p>
+              <p className="text-gray-400 text-xs">Apaga tudo permanentemente</p>
+            </div>
+            <ChevronRight size={18} className="text-gray-400" />
+          </button>
+        </div>
+      </Section>
+
       <Section title="Conta Google"><GoogleLink /></Section>
+
       <button onClick={onLogout} className="flex items-center justify-center gap-2 bg-white rounded-full py-4 font-semibold shadow-sm text-rose-600">
         <LogOut size={18} /> Sair
       </button>
+
+      <Modal open={modalAuth === 'add-email'} onClose={closeAuth} title="Adicionar email e senha">
+        <div className="flex flex-col gap-3">
+          <p className="text-gray-500 text-sm">
+            Sua conta só tem Google. Adicione um email e senha para ter outra forma de entrar.
+          </p>
+          <input
+            value={authEmail}
+            onChange={(e) => setAuthEmail(e.target.value)}
+            placeholder="seu@email.com"
+            type="email"
+            className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
+          />
+          <input
+            value={authNewPass}
+            onChange={(e) => setAuthNewPass(e.target.value)}
+            placeholder="Senha (6+ caracteres)"
+            type="password"
+            className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
+          />
+          <input
+            value={authPass2}
+            onChange={(e) => setAuthPass2(e.target.value)}
+            placeholder="Repita a senha"
+            type="password"
+            className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
+          />
+          {authError && <p className="text-rose-600 text-sm text-center">{authError}</p>}
+          {authInfo && <p className="text-violet-600 text-sm text-center">{authInfo}</p>}
+          <button disabled={authBusy} onClick={submitAddEmail} className="bg-black text-white rounded-full py-3 font-semibold disabled:opacity-50">
+            {authBusy ? 'Aguarde...' : 'Adicionar'}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal open={modalAuth === 'change-pass'} onClose={closeAuth} title="Redefinir senha">
+        <div className="flex flex-col gap-3">
+          <input
+            value={authCurrentPass}
+            onChange={(e) => setAuthCurrentPass(e.target.value)}
+            placeholder="Senha atual"
+            type="password"
+            className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
+          />
+          <input
+            value={authNewPass}
+            onChange={(e) => setAuthNewPass(e.target.value)}
+            placeholder="Nova senha"
+            type="password"
+            className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
+          />
+          <input
+            value={authPass2}
+            onChange={(e) => setAuthPass2(e.target.value)}
+            placeholder="Repita a nova senha"
+            type="password"
+            className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
+          />
+          {authError && <p className="text-rose-600 text-sm text-center">{authError}</p>}
+          {authInfo && <p className="text-violet-600 text-sm text-center">{authInfo}</p>}
+          <button disabled={authBusy} onClick={submitChangePass} className="bg-black text-white rounded-full py-3 font-semibold disabled:opacity-50">
+            {authBusy ? 'Aguarde...' : 'Salvar'}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal open={modalAuth === 'delete'} onClose={closeAuth} title="Deletar minha conta">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-start gap-2 bg-rose-50 rounded-2xl p-3">
+            <ShieldAlert size={18} className="text-rose-600 mt-0.5 shrink-0" />
+            <p className="text-rose-700 text-sm">
+              Isso apaga <b>tudo</b> permanentemente: contas, transações, cartões, investimentos, família...
+              Não dá para desfazer.
+            </p>
+          </div>
+          {googleOnly ? (
+            <p className="text-gray-500 text-sm">
+              Sua conta é só Google. Clique abaixo — vai abrir o popup do Google
+              para confirmar e depois apagamos.
+            </p>
+          ) : (
+            <input
+              value={authCurrentPass}
+              onChange={(e) => setAuthCurrentPass(e.target.value)}
+              placeholder="Digite sua senha para confirmar"
+              type="password"
+              className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
+            />
+          )}
+          {authError && <p className="text-rose-600 text-sm text-center">{authError}</p>}
+          <button disabled={authBusy} onClick={submitDelete} className="bg-rose-600 text-white rounded-full py-3 font-semibold disabled:opacity-50">
+            {authBusy ? 'Apagando...' : 'Deletar permanentemente'}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

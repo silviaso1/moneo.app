@@ -20,7 +20,7 @@ export default function buildMessages({ state, remaining, daysLeft, isCurrent, t
   }
 
   if (remaining < 0) {
-    add(100, `Estourou o limite de ${name} em ${moneyShort(-remaining)}. Vou fingir que não vi. Mentira, vi sim.`);
+    add(100, `Estourou o limite de ${name} em ${moneyShort(-remaining)}. Vou fingir que não vi. Mentira, vi sim :(`);
   }
 
   categories.forEach((c) => {

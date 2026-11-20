@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import FormInput from './FormInput';
 import CustomSelect from './CustomSelect';
-import { brazilianBanks } from '../utils/banks';
+import { brazilianBanks, getBankLogoUrl } from '../utils/banks';
 
 export default function AccountForm({ onSubmit, accountToEdit }) {
   const [name, setName] = useState(brazilianBanks[0].name);
@@ -9,7 +9,6 @@ export default function AccountForm({ onSubmit, accountToEdit }) {
   const [type, setType] = useState('Conta Corrente');
   const [desc, setDesc] = useState('');
 
-  // Se estiver editando, preenche os dados
   useEffect(() => {
     if (accountToEdit) {
       setName(accountToEdit.name || brazilianBanks[0].name);
@@ -21,6 +20,7 @@ export default function AccountForm({ onSubmit, accountToEdit }) {
 
   const selectedBank = brazilianBanks.find(b => b.name === name) || brazilianBanks[0];
   const color = selectedBank.color;
+  const logoUrl = getBankLogoUrl(selectedBank.ispb);
 
   const bankOptions = brazilianBanks.map(bank => ({
     value: bank.name,
@@ -75,12 +75,30 @@ export default function AccountForm({ onSubmit, accountToEdit }) {
         onChange={(e) => setDesc(e.target.value)} 
       />
       
+      {/* PRÉVIA DA CONTA COM LOGO REAL */}
       <div className="mb-6 flex items-center gap-3 p-4 bg-gray-50 rounded-2xl border border-[#e0e0e0]">
         <div 
-          className="w-10 h-10 rounded-xl flex items-center justify-center font-extrabold text-lg text-white" 
-          style={{ background: color }}
+          className="w-10 h-10 rounded-xl flex items-center justify-center font-extrabold text-lg text-white overflow-hidden shrink-0"
+          style={{ background: logoUrl ? '#ffffff' : color }} // Fundo branco se tiver logo, senão usa a cor
         >
-          {name.charAt(0).toUpperCase()}
+          {logoUrl ? (
+            <img 
+              src={logoUrl} 
+              alt={name} 
+              className="w-7 h-7 object-contain"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'block';
+              }}
+            />
+          ) : null}
+          {/* Fallback: Bolinha/Letra caso a logo falhe ou não exista */}
+          <span 
+            className={`${logoUrl ? 'hidden' : 'block'}`}
+            style={{ color: logoUrl ? 'transparent' : '#fff' }}
+          >
+            {name.charAt(0).toUpperCase()}
+          </span>
         </div>
         <div>
           <p className="text-sm font-bold text-black">Prévia da conta</p>

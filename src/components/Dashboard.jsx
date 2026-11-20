@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Check, ChevronDown, ChevronLeft, ChevronRight, CreditCard, Eye, EyeOff, Gauge, Minus, PieChart,
   PiggyBank, Plus, Receipt, Repeat, SlidersHorizontal, TrendingUp, Wallet,
+  BarChart3, Users,
 } from 'lucide-react';
 import { money, moneyShort } from '../utils/format';
 import { fmtShort } from '../utils/invoices';
 import { SHORTCUTS, safeShortcuts } from '../utils/config';
 import { months } from '../store';
+import { brazilianBanks, getBankLogoUrl } from '../utils/banks';
 import buildMessages from '../utils/mascotMessages';
 import MonthBar from './MonthBar';
 import CategoryIcon from './CategoryIcon';
@@ -27,8 +29,8 @@ function ArcGauge({ percent, over, children }) {
       <svg viewBox="0 0 240 240" className="absolute inset-0 w-full h-full">
         <defs>
           <linearGradient id="lilac" x1="0" y1="1" x2="1" y2="0">
-            <stop offset="0%" stopColor="#C4B5FD" />
-            <stop offset="100%" stopColor="#8B5CF6" />
+            <stop offset="0%" style={{ stopColor: 'var(--accent-from)' }} />
+            <stop offset="100%" style={{ stopColor: 'var(--accent-to)' }} />
           </linearGradient>
         </defs>
         <path d={d} fill="none" stroke="#E2E2E8" strokeWidth="14" strokeLinecap="round" pathLength="100" />
@@ -132,6 +134,8 @@ export default function Dashboard({
     statement: { icon: <Receipt size={22} />, run: () => onTab('statement') },
     investments: { icon: <PiggyBank size={22} />, run: () => onTab('investments') },
     planejar: { icon: <PieChart size={22} />, run: () => onTab('charts') },
+    graphs: { icon: <BarChart3 size={22} />, run: () => onTab('graphs') },
+    family: { icon: <Users size={22} />, run: () => onTab('family') },
     settings: { icon: <SlidersHorizontal size={22} />, run: () => onTab('settings') },
   };
 
@@ -178,7 +182,11 @@ export default function Dashboard({
             </button>
             <div className="flex gap-1">
               {messages.map((_, i) => (
-                <span key={i} className={`h-1 rounded-full transition-all ${i === cur ? 'w-4 bg-violet-300' : 'w-1 bg-white/30'}`} />
+                <span
+                  key={i}
+                  className={`h-1 rounded-full transition-all ${i === cur ? 'w-4' : 'w-1 bg-white/30'}`}
+                  style={i === cur ? { background: 'var(--accent-from)' } : undefined}
+                />
               ))}
             </div>
           </>
@@ -214,9 +222,11 @@ export default function Dashboard({
       </div>
 
       <div className="grid grid-cols-4 gap-y-5">
-        {safeShortcuts(state.shortcuts).map((id) => (
-          <Action key={id} icon={SC[id].icon} label={SHORTCUTS[id]} onClick={SC[id].run} />
-        ))}
+        {safeShortcuts(state.shortcuts).map((id) => {
+          const item = SC[id];
+          if (!item) return null;
+          return <Action key={id} icon={item.icon} label={SHORTCUTS[id]} onClick={item.run} />;
+        })}
       </div>
 
       <Card icon={<Wallet size={18} />} title="O mês em uma conta">
@@ -262,7 +272,10 @@ export default function Dashboard({
                       </p>
                     </div>
                     <div className="h-1.5 rounded-full bg-gray-200 mt-2 overflow-hidden">
-                      <div className={`h-full rounded-full ${isOver ? 'bg-rose-600' : 'bg-violet-500'}`} style={{ width: `${pct}%` }} />
+                      <div
+                        className={`h-full rounded-full ${isOver ? 'bg-rose-600' : ''}`}
+                        style={{ width: `${pct}%`, background: isOver ? undefined : 'var(--accent-to)' }}
+                      />
                     </div>
                   </div>
                   <ChevronDown size={18} className={`text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
@@ -349,15 +362,36 @@ export default function Dashboard({
           </button>
         </div>
         <div className="flex flex-col divide-y divide-gray-100 border-t border-gray-100">
-          {(state.showAllAccounts ? state.accounts : state.accounts.slice(0, 3)).map((a) => (
-            <div key={a.id} className="flex items-center justify-between py-3">
-              <span className="flex items-center gap-2 font-medium">
-                <span className="w-3 h-3 rounded-full" style={{ background: a.color || '#000' }} />
-                {a.name}
-              </span>
-              <span className="font-semibold">{state.hideTotalBalance ? '••••' : money(a.balance)}</span>
-            </div>
-          ))}
+          {(state.showAllAccounts ? state.accounts : state.accounts.slice(0, 3)).map((a) => {
+            const bank = brazilianBanks.find(b => b.name === a.name);
+            const logoUrl = bank ? getBankLogoUrl(bank.ispb) : null;
+
+            return (
+              <div key={a.id} className="flex items-center justify-between py-3">
+                <span className="flex items-center gap-2 font-medium">
+                  <div className="w-6 h-6 rounded-full bg-white border border-gray-100 flex items-center justify-center overflow-hidden shrink-0">
+                    {logoUrl ? (
+                      <img 
+                        src={logoUrl} 
+                        alt={a.name} 
+                        className="w-4 h-4 object-contain"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+                    <span 
+                      className={`w-3 h-3 rounded-full ${logoUrl ? 'hidden' : 'block'}`}
+                      style={{ background: bank?.color || a.color || '#000' }}
+                    />
+                  </div>
+                  {a.name}
+                </span>
+                <span className="font-semibold">{state.hideTotalBalance ? '••••' : money(a.balance)}</span>
+              </div>
+            );
+          })}
         </div>
         {state.accounts.length > 3 && (
           <button onClick={onToggleShowAll} className="mt-2 text-sm font-semibold text-gray-500">
@@ -369,7 +403,7 @@ export default function Dashboard({
       {!state.hideSaved && (
         <button onClick={() => onTab('investments')} className="bg-white rounded-[28px] p-5 shadow-sm text-left">
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-2 text-gray-600 font-semibold"><PiggyBank size={18} /> Rendeu em {months[month].toLowerCase()}</span>
+            <span className="flex items-center gap-2 text-gray-600 font-semibold"><PiggyBank size={18} /> Juros em {months[month].toLowerCase()}</span>
             <span className="flex items-center gap-1 font-bold">{money(totalSaved)} <ChevronRight size={16} /></span>
           </div>
           <p className="text-gray-400 text-sm mt-1">No ano de {year}: {money(state.yearSaved)}</p>
