@@ -1,7 +1,6 @@
 export const PAYMENT_METHODS = [
   { id: 'pix', label: 'Pix', on: ['expense', 'income'] },
   { id: 'debit', label: 'Débito', on: ['expense'] },
-  { id: 'credit', label: 'Crédito', on: ['expense'] },
   { id: 'deposit', label: 'Depósito', on: ['expense', 'income'] },
   { id: 'transfer', label: 'Transferência', on: ['expense', 'income'] },
   { id: 'boleto', label: 'Boleto', on: ['expense'] },
