@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import useFinance from './hooks/useFinance';
 import LoginScreen from './components/LoginScreen';
+import Home from './components/Home';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import Transactions from './components/Transactions';
@@ -38,7 +39,16 @@ export default function App() {
   const [fixedToEdit, setFixedToEdit] = useState(null);
   const [cardToEdit, setCardToEdit] = useState(null);
 
-  if (!user) return <LoginScreen />;
+  // Estado para controlar se o usuário quer ver a tela de login
+  const [showLogin, setShowLogin] = useState(false);
+
+  // SE NÃO TEM USUÁRIO, MOSTRA A HOME OU O LOGIN
+  if (!user) {
+    if (showLogin) {
+      return <LoginScreen onBack={() => setShowLogin(false)} />;
+    }
+    return <Home onLogin={() => setShowLogin(true)} />;
+  }
 
   if (finance.loading) {
     return (
@@ -51,8 +61,6 @@ export default function App() {
   const st = finance.state;
   const monthLabel = months[st.currentMonth].toLowerCase();
   const themeId = safeTheme(st.themeColor);
-  
-  // CORREÇÃO AQUI: Busca as cores no objeto THEME_COLORS
   const themeColors = THEME_COLORS[themeId] || THEME_COLORS.purple;
 
   const dashboardState = st.animeTheme
@@ -130,7 +138,6 @@ export default function App() {
     <div 
       className="w-full min-h-screen flex justify-center"
       style={{
-        // INJETANDO AS VARIÁVEIS DIRETAMENTE AQUI
         '--accent-from': themeColors.from,
         '--accent-to': themeColors.to,
         '--accent-soft': themeColors.soft,
