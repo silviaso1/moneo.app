@@ -58,47 +58,35 @@ const fmtTime = (h) => {
 
 export default function Home({ onLogin }) {
   const [faqOpen, setFaqOpen] = useState(null);
-
   const [income, setIncome] = useState('3.500');
   const [hours, setHours] = useState('220');
   const [extra, setExtra] = useState('250');
 
-  // Estados do PWA
+  // PWA
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installModal, setInstallModal] = useState(null);
-  const [isInstalled, setIsInstalled] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [installMessage, setInstallMessage] = useState('');
 
   useEffect(() => {
-    // Detecta se o aplicativo já está instalado
-    const checkInstalled = () => {
-      const standalone = window.matchMedia(
-        '(display-mode: standalone)'
-      ).matches;
-
-      const iosStandalone = window.navigator.standalone === true;
-
-      setIsInstalled(standalone || iosStandalone);
-    };
-
-    checkInstalled();
-
-    // Captura o evento nativo do Chrome/Edge
     const handleBeforeInstallPrompt = (event) => {
+      // Impede que o navegador mostre a instalação automaticamente.
+      // Guardamos o evento para dispará-lo pelo botão do modal.
       event.preventDefault();
 
-      console.log('[MONEO PWA] Evento beforeinstallprompt capturado.');
+      console.log('[PWA] Novo evento de instalação disponível.');
 
       setInstallPrompt(event);
+      setInstallMessage('');
     };
 
-    // Detecta instalação concluída
     const handleAppInstalled = () => {
-      console.log('[MONEO PWA] Aplicativo instalado!');
+      console.log('[PWA] Aplicativo instalado.');
 
-      setIsInstalled(true);
       setInstallPrompt(null);
       setInstallModal(null);
+      setInstalling(false);
+      setInstallMessage('');
     };
 
     window.addEventListener(
@@ -114,44 +102,62 @@ export default function Home({ onLogin }) {
         handleBeforeInstallPrompt
       );
 
-      window.removeEventListener(
-        'appinstalled',
-        handleAppInstalled
-      );
+      window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
-  // Abre o modal de instalação
+  // Abre o modal sempre que o usuário clicar em um dos botões.
   const handleInstall = (platform) => {
-    if (isInstalled) return;
-
+    setInstallMessage('');
     setInstallModal(platform);
   };
 
-  // Abre a janela nativa de instalação
-  const confirmAndroidInstall = async () => {
-    if (!installPrompt || installing) return;
+  // Dispara a janela nativa de instalação do navegador.
+  const confirmInstall = async () => {
+    if (installing) return;
+
+    if (!installPrompt) {
+      setInstallMessage(
+        'A instalação automática não está disponível neste momento. Aguarde o navegador disponibilizar uma nova tentativa ou use o menu do Chrome.'
+      );
+      return;
+    }
 
     try {
       setInstalling(true);
+      setInstallMessage('');
 
+      // Guarda o evento atual.
       const deferredPrompt = installPrompt;
 
-      // O evento só pode ser utilizado uma vez
+      // O evento só pode ser utilizado uma vez.
       setInstallPrompt(null);
 
-      // Abre a janela nativa do navegador
+      // Abre a janela nativa do Chrome.
       await deferredPrompt.prompt();
 
-      const result = await deferredPrompt.userChoice;
+      // Aguarda a escolha feita pelo usuário.
+      const choice = await deferredPrompt.userChoice;
 
-      console.log('[MONEO PWA] Resultado:', result.outcome);
+      console.log('[PWA] Escolha do usuário:', choice.outcome);
 
-      if (result.outcome === 'accepted') {
+      if (choice.outcome === 'accepted') {
         setInstallModal(null);
+        setInstallMessage('');
+      } else {
+        // O modal continua aberto.
+        // Se o Chrome emitir outro evento, o listener acima
+        // disponibilizará novamente o botão automaticamente.
+        setInstallMessage(
+          'A instalação foi cancelada. Você pode tentar novamente quando o Chrome disponibilizar uma nova solicitação.'
+        );
       }
     } catch (error) {
-      console.error('[MONEO PWA] Erro na instalação:', error);
+      console.error('[PWA] Erro ao iniciar instalação:', error);
+
+      setInstallMessage(
+        'Não foi possível abrir a instalação. Aguarde uma nova disponibilidade do navegador.'
+      );
     } finally {
       setInstalling(false);
     }
@@ -182,7 +188,7 @@ export default function Home({ onLogin }) {
     },
     {
       q: 'Funciona no iPhone e no Android?',
-      a: 'Sim! Será um PWA (Aplicativo Web Progressivo), então funcionará perfeitamente em qualquer celular.',
+      a: 'Sim! Será um PWA (Aplicativo Web Progressivo), então funcionará em qualquer celular compatível.',
     },
     {
       q: 'Como funcionam os comentários do pingu?',
@@ -203,18 +209,16 @@ export default function Home({ onLogin }) {
   const StoreButton = ({ Icon, small, big, platform }) => (
     <button
       onClick={() => handleInstall(platform)}
-      disabled={isInstalled}
-      className="group flex items-center justify-center sm:justify-start gap-3 bg-black text-white w-full sm:w-auto px-7 sm:pr-9 h-[72px] rounded-[20px] hover:bg-[#222] hover:-translate-y-0.5 transition-all shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+      className="group flex items-center justify-center sm:justify-start gap-3 bg-black text-white w-full sm:w-auto px-7 sm:pr-9 h-[72px] rounded-[20px] hover:bg-[#222] hover:-translate-y-0.5 transition-all shadow-lg"
     >
       {Icon && <Icon size={25} />}
 
       <span className="flex flex-col items-start leading-none">
         <span className="text-[11px] font-medium text-gray-400 mb-1.5">
-          {isInstalled ? 'Aplicativo disponível' : small}
+          {small}
         </span>
-
         <span className="text-lg font-bold tracking-tight">
-          {isInstalled ? 'Instalado' : big}
+          {big}
         </span>
       </span>
     </button>
@@ -225,7 +229,9 @@ export default function Home({ onLogin }) {
 
       <nav className="fixed top-0 left-0 right-0 z-50 flex justify-center pt-4 px-4">
         <div className="bg-white rounded-2xl px-3 py-2 flex items-center justify-between w-full max-w-[840px] shadow-sm">
-          <span className="font-black text-xl tracking-tighter pl-3">moneo.</span>
+          <span className="font-black text-xl tracking-tighter pl-3">
+            moneo.
+          </span>
 
           <div className="hidden md:flex gap-5 text-xs font-medium text-gray-600">
             <a href="#como-funciona" className="hover:text-black transition">Como funciona</a>
@@ -234,22 +240,29 @@ export default function Home({ onLogin }) {
             <a href="#faq" className="hover:text-black transition">Dúvidas</a>
           </div>
 
-          <button onClick={onLogin} className="bg-black text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-[#222] transition">
+          <button
+            onClick={onLogin}
+            className="bg-black text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-[#222] transition"
+          >
             Entrar
           </button>
         </div>
       </nav>
 
+      {/* HERO */}
       <section className="relative pt-36 pb-24 px-6 overflow-hidden">
         <div className="absolute top-[-15%] right-[-10%] w-[70%] h-[80%] bg-gradient-to-bl from-[#C4B5FD] via-[#DDD6FE] to-transparent rounded-full blur-[110px] opacity-70 pointer-events-none" />
         <div className="absolute top-[10%] left-[-15%] w-[45%] h-[50%] bg-gradient-to-br from-white to-transparent rounded-full blur-[90px] pointer-events-none" />
 
         <div className="relative z-10 max-w-5xl mx-auto flex flex-col lg:flex-row items-center justify-center gap-16 lg:gap-24">
           <div className="flex flex-col items-center lg:items-start text-center lg:text-left gap-6">
-            <h1 className="text-7xl md:text-[120px] font-black leading-[0.85] tracking-tighter">moneo.</h1>
+            <h1 className="text-7xl md:text-[120px] font-black leading-[0.85] tracking-tighter">
+              moneo.
+            </h1>
 
             <p className="text-lg text-gray-600 max-w-md">
-              Dois toques por gasto e você sabe na hora quanto ainda dá pra gastar no mês. <b className="text-black">Sem planilha, sem susto na fatura.</b>
+              Dois toques por gasto e você sabe na hora quanto ainda dá pra gastar no mês.{' '}
+              <b className="text-black">Sem planilha, sem susto na fatura.</b>
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3 pt-2 w-full max-w-sm sm:max-w-none sm:w-auto">
@@ -265,7 +278,11 @@ export default function Home({ onLogin }) {
               <div className="w-full h-full rounded-[36px] overflow-hidden flex flex-col px-4 pt-3 relative">
                 <div className="flex justify-between items-center text-[10px] font-bold px-2 mb-5">
                   <span>9:41</span>
-                  <span className="flex items-center gap-1"><Signal size={11} /><Wifi size={11} /><BatteryFull size={14} /></span>
+                  <span className="flex items-center gap-1">
+                    <Signal size={11} />
+                    <Wifi size={11} />
+                    <BatteryFull size={14} />
+                  </span>
                 </div>
 
                 <p className="text-xs font-bold ml-1 mb-1">Novembro</p>
@@ -286,13 +303,17 @@ export default function Home({ onLogin }) {
 
                 <p className="text-center text-[10px] text-gray-500 mt-2">Pode gastar no mês</p>
                 <p className="text-center text-4xl font-black tracking-tighter font-display">R$ 612</p>
-                <p className="text-center text-[9px] text-gray-500 mt-1 flex items-center justify-center gap-2">R$ 51 por dia <Pill>NO RITMO</Pill></p>
+                <p className="text-center text-[9px] text-gray-500 mt-1 flex items-center justify-center gap-2">
+                  R$ 51 por dia <Pill>NO RITMO</Pill>
+                </p>
 
                 <div className="bg-[#f2f2f2] rounded-2xl px-3 py-1 mt-4">
                   {txs.map(({ Icon, name, cat, val }, i) => (
                     <div key={name} className={`flex items-center justify-between py-2.5 ${i < txs.length - 1 ? 'border-b border-gray-200' : ''}`}>
                       <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center"><Icon size={13} /></div>
+                        <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center">
+                          <Icon size={13} />
+                        </div>
                         <div className="leading-tight">
                           <p className="text-[11px] font-bold">{name}</p>
                           <p className="text-[9px] text-gray-400">{cat}</p>
@@ -306,7 +327,9 @@ export default function Home({ onLogin }) {
                 <div className="absolute bottom-3 left-3 right-3 bg-[#f2f2f2] rounded-full h-12 flex items-center justify-around px-3 text-gray-500">
                   <HomeIcon size={16} className="text-black" />
                   <List size={16} />
-                  <div className="w-9 h-9 bg-black rounded-full flex items-center justify-center text-white"><Plus size={18} /></div>
+                  <div className="w-9 h-9 bg-black rounded-full flex items-center justify-center text-white">
+                    <Plus size={18} />
+                  </div>
                   <PiggyBank size={16} />
                   <User size={16} />
                 </div>
@@ -338,6 +361,7 @@ export default function Home({ onLogin }) {
         </div>
       </section>
 
+      {/* COMO FUNCIONA */}
       <section id="como-funciona" className="py-20 px-6 max-w-[880px] mx-auto">
         <h2 className="text-6xl md:text-[88px] font-black uppercase leading-[0.88] tracking-tighter font-display mb-5">
           Anota em<br />dois toques.
@@ -410,6 +434,7 @@ export default function Home({ onLogin }) {
         </div>
       </section>
 
+      {/* RECURSOS */}
       <section id="recursos" className="py-20 px-6 max-w-[880px] mx-auto">
         <h2 className="text-6xl md:text-[88px] font-black uppercase leading-[0.88] tracking-tighter font-display mb-10">
           Tudo o que<br />precisa.
@@ -480,6 +505,7 @@ export default function Home({ onLogin }) {
         </div>
       </section>
 
+      {/* HORAS */}
       <section id="horas" className="py-20 px-6 max-w-[880px] mx-auto">
         <div className="rounded-[28px] p-8 md:p-10 text-white grid md:grid-cols-2 gap-10 items-center" style={{ background: '#0a0a0a' }}>
           <div>
@@ -495,13 +521,17 @@ export default function Home({ onLogin }) {
             <div className="flex gap-3">
               <label className="bg-[#1c1c1e] rounded-xl px-3 py-2.5 flex-1 block">
                 <span className="text-[9px] text-gray-400 block mb-1">Ganho por mês</span>
-                <span className="flex items-center gap-2"><span className="text-xs text-gray-500">R$</span>
-                  <input value={income} onChange={(e) => setIncome(e.target.value)} inputMode="decimal" className="bg-transparent outline-none font-bold text-sm w-full" /></span>
+                <span className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">R$</span>
+                  <input value={income} onChange={(e) => setIncome(e.target.value)} inputMode="decimal" className="bg-transparent outline-none font-bold text-sm w-full" />
+                </span>
               </label>
               <label className="bg-[#1c1c1e] rounded-xl px-3 py-2.5 flex-1 block">
                 <span className="text-[9px] text-gray-400 block mb-1">Horas por mês</span>
                 <span className="flex items-center gap-2">
-                  <input value={hours} onChange={(e) => setHours(e.target.value)} inputMode="decimal" className="bg-transparent outline-none font-bold text-sm w-full" /><span className="text-xs text-gray-500">h</span></span>
+                  <input value={hours} onChange={(e) => setHours(e.target.value)} inputMode="decimal" className="bg-transparent outline-none font-bold text-sm w-full" />
+                  <span className="text-xs text-gray-500">h</span>
+                </span>
               </label>
             </div>
           </div>
@@ -509,10 +539,14 @@ export default function Home({ onLogin }) {
           <div className="flex flex-col gap-2.5">
             {[['Café da padaria', 9.5], ['Delivery da sexta', 38.9, true], ['A assinatura que você esqueceu', 44.9]].map(([label, v, hl]) => (
               <div key={label} className={`rounded-2xl px-4 py-3 flex justify-between items-center ${hl ? 'text-black' : 'bg-[#1c1c1e]'}`} style={hl ? { background: LILAC } : {}}>
-                <div><p className={`text-[10px] ${hl ? 'opacity-70' : 'text-gray-400'}`}>{label}</p><p className="font-black font-display text-xl">R$ {fmtMoney(v)}</p></div>
+                <div>
+                  <p className={`text-[10px] ${hl ? 'opacity-70' : 'text-gray-400'}`}>{label}</p>
+                  <p className="font-black font-display text-xl">R$ {fmtMoney(v)}</p>
+                </div>
                 <p className="font-black font-display text-2xl" style={hl ? {} : { color: LILAC }}>{toTime(v)}</p>
               </div>
             ))}
+
             <div className="border border-dashed border-white/25 rounded-2xl px-4 py-3 flex justify-between items-center">
               <div>
                 <p className="text-[10px] text-gray-400 mb-1">E aquele gasto?</p>
@@ -523,6 +557,7 @@ export default function Home({ onLogin }) {
               </div>
               <p className="font-black font-display text-2xl" style={{ color: LILAC }}>{toTime(parseBR(extra))}</p>
             </div>
+
             <button onClick={onLogin} className="mt-1 border border-white/70 text-white px-4 py-2 rounded-full text-[11px] font-bold flex items-center gap-2 hover:bg-white hover:text-black transition w-fit">
               <ArrowUpRight size={13} /> Entrar na minha conta
             </button>
@@ -530,6 +565,7 @@ export default function Home({ onLogin }) {
         </div>
       </section>
 
+      {/* FAQ */}
       <section id="faq" className="py-20 px-6 max-w-[880px] mx-auto">
         <h2 className="text-6xl md:text-[88px] font-black uppercase leading-[0.88] tracking-tighter font-display mb-10 text-center">
           Perguntas<br />frequentes.
@@ -547,6 +583,7 @@ export default function Home({ onLogin }) {
         </div>
       </section>
 
+      {/* FOOTER */}
       <footer style={{ background: '#0a0a0a' }} className="text-white pt-8 pb-4 px-8 rounded-[28px] max-w-[832px] mx-4 md:mx-auto mb-10">
         <div className="flex flex-col md:flex-row justify-between gap-10 mb-10">
           <div>
@@ -587,7 +624,13 @@ export default function Home({ onLogin }) {
           onClick={() => setInstallModal(null)}
         >
           <div
-            className="bg-white rounded-[28px] p-6 w-full max-w-[390px] text-[#111] shadow-2xl relative"
+            className="rounded-[28px] p-6 w-full max-w-[390px] text-[#111] shadow-2xl relative"
+            style={{
+              background: '#FFFFFF',
+              backgroundColor: '#FFFFFF',
+              backgroundImage: 'none',
+              opacity: 1,
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -605,7 +648,7 @@ export default function Home({ onLogin }) {
             <p className="text-sm text-gray-500 mb-6">
               {installModal === 'ios'
                 ? 'Adicione o moneo à tela inicial do seu iPhone para acessar como um aplicativo.'
-                : 'Tenha o moneo sempre disponível no seu dispositivo, como um aplicativo.'}
+                : 'Instale o moneo no seu dispositivo e tenha acesso rápido sempre que precisar.'}
             </p>
 
             {installModal === 'ios' ? (
@@ -654,36 +697,33 @@ export default function Home({ onLogin }) {
             ) : (
               <div className="flex flex-col gap-3">
                 {installPrompt ? (
-                  <>
-                    <div className="bg-[#f2f2f2] rounded-2xl p-4">
-                      <p className="font-bold text-sm">moneo.</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Aplicativo Web Progressivo
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={confirmAndroidInstall}
-                      disabled={installing}
-                      className="w-full bg-black text-white rounded-full py-3.5 font-bold text-sm hover:bg-[#222] transition disabled:opacity-50"
-                    >
-                      {installing ? 'Aguarde...' : 'Instalar moneo.'}
-                    </button>
-                  </>
+                  <button
+                    onClick={confirmInstall}
+                    disabled={installing}
+                    className="w-full bg-black text-white rounded-full py-3.5 font-bold text-sm hover:bg-[#222] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {installing ? 'Abrindo instalação...' : 'Instalar moneo.'}
+                  </button>
                 ) : (
-                  <>
-                    <p className="text-xs text-gray-500 text-center">
-                      O navegador ainda não disponibilizou a instalação automática.
-                      Verifique se o evento de instalação foi capturado.
+                  <div className="flex flex-col gap-3">
+                    <p className="text-xs text-gray-500 text-center leading-relaxed">
+                      {installMessage ||
+                        'Aguardando o navegador disponibilizar a instalação automática. Você também pode instalar pelo menu do Chrome.'}
                     </p>
 
                     <button
                       onClick={() => setInstallModal(null)}
-                      className="w-full bg-black text-white rounded-full py-3.5 font-bold text-sm mt-2 hover:bg-[#222] transition"
+                      className="w-full bg-black text-white rounded-full py-3.5 font-bold text-sm hover:bg-[#222] transition"
                     >
-                      Fechar
+                      Entendi
                     </button>
-                  </>
+                  </div>
+                )}
+
+                {installMessage && installPrompt && (
+                  <p className="text-xs text-gray-500 text-center leading-relaxed">
+                    {installMessage}
+                  </p>
                 )}
               </div>
             )}
