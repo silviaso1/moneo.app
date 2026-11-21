@@ -41,13 +41,21 @@ export default function App() {
   const [fixedToEdit, setFixedToEdit] = useState(null);
   const [cardToEdit, setCardToEdit] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const isPWA =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true;
 
   const [showLogin, setShowLogin] = useState(false);
 
   if (!user) {
+    if (isPWA) {
+      return <LoginScreen />;
+    }
+
     if (showLogin) {
       return <LoginScreen onBack={() => setShowLogin(false)} />;
     }
+
     return <Home onLogin={() => setShowLogin(true)} />;
   }
 
