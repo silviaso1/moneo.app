@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import useFinance from './hooks/useFinance';
@@ -497,6 +496,7 @@ export default function App() {
             key={investmentToEdit?.id || 'new'}
             accounts={st.accounts}
             investmentToEdit={investmentToEdit}
+            investmentTypes={st.investmentTypes}
             onSubmit={(d, id) => {
               finance.saveInvestment(d, id);
               setModal(null);

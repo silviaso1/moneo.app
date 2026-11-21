@@ -19,6 +19,7 @@ const defaults = {
   hideTotalBalance: false,
   showAllAccounts: false,
   totalLimit: null,
+  totalLimits: null,
   shortcuts: null,
   navItems: null,
   mascotPack: 'skunk',
@@ -27,6 +28,7 @@ const defaults = {
   familyId: null,
   monthlyIncome: 0,
   monthlyHours: 0,
+  investmentTypes: null,
 };
 
 const COLS = ['accounts', 'transactions', 'investments', 'categories', 'fixeds', 'cards', 'mascots'];
@@ -34,6 +36,25 @@ const COLS = ['accounts', 'transactions', 'investments', 'categories', 'fixeds',
 const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 const sum = (arr, fn) => arr.reduce((s, x) => s + (Number(fn(x)) || 0), 0);
 const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0) || String(a.name).localeCompare(String(b.name));
+
+// limite da categoria vale do mês em que foi definido pra frente (não retroativo)
+const limitFor = (c, key) => {
+  const h = c.limits || {};
+  const ks = Object.keys(h).filter((k) => k <= key).sort();
+  return ks.length ? Number(h[ks[ks.length - 1]]) || 0 : Number(c.limit) || 0;
+};
+
+// limite total do mês: vale do mês em que foi definido pra frente (não retroativo)
+// null = usar a soma das categorias
+const totalLimitFor = (s, key) => {
+  const h = s.totalLimits || {};
+  const ks = Object.keys(h).filter((k) => k <= key).sort();
+  if (ks.length) {
+    const v = h[ks[ks.length - 1]];
+    return v == null ? null : Number(v) || 0;
+  }
+  return s.totalLimit != null ? Number(s.totalLimit) || 0 : null; // valor antigo, sem mês
+};
 
 const invAmt = (i) => Number(i?.amount ?? i?.value ?? 0) || 0;
 const invAcc = (i) => i?.accountId ?? i?.account ?? null;
@@ -110,6 +131,8 @@ export default function useFinance() {
     ? settings.monthlyIncome / settings.monthlyHours
     : 0;
 
+  const totalLimit = totalLimitFor(settings, key);
+
   useEffect(() => {
     if (!uid || !baseId) return;
     setReady({});
@@ -168,7 +191,10 @@ export default function useFinance() {
   const loading = !!uid && ![...COLS, 'user'].every((k) => ready[k]);
 
   const accounts = useMemo(() => [...data.accounts].sort(byOrder), [data.accounts]);
-  const categories = useMemo(() => [...data.categories].sort(byOrder), [data.categories]);
+  const categories = useMemo(
+    () => data.categories.map((c) => ({ ...c, limit: limitFor(c, key) })).sort(byOrder),
+    [data.categories, key]
+  );
   const cards = useMemo(() => [...data.cards].sort(byOrder), [data.cards]);
   const customMascots = useMemo(
     () => Object.fromEntries(data.mascots.map((m) => [m.id, m.src])),
@@ -262,7 +288,7 @@ export default function useFinance() {
     const hoursSpent = hourlyRate > 0 ? spent / hourlyRate : 0;
 
     const categoriesLimit = sum(categories, (c) => c.limit);
-    const limit = settings.totalLimit != null ? Number(settings.totalLimit) || 0 : categoriesLimit;
+    const limit = totalLimit != null ? totalLimit : categoriesLimit;
 
     const paidFixed = {};
     data.transactions.forEach((t) => {
@@ -279,7 +305,7 @@ export default function useFinance() {
     const sobra = income - fixedExpenseTotal - dailySpent;
 
     return { dailySpent, dailyHours, spent, hoursSpent, limit, categoriesLimit, categorySpent, paidFixed, fixedIncomeTotal, fixedExpenseTotal, income, sobra };
-  }, [monthTransactions, data.transactions, key, categories, activeFixeds, settings.totalLimit, hourlyRate]);
+  }, [monthTransactions, data.transactions, key, categories, activeFixeds, totalLimit, hourlyRate]);
 
   const remaining = calc.limit - calc.spent;
   const percent = calc.limit > 0 ? Math.min(100, (calc.spent / calc.limit) * 100) : calc.spent > 0 ? 100 : 0;
@@ -294,6 +320,7 @@ export default function useFinance() {
 
   const state = {
     ...settings,
+    totalLimit, // já resolvido para o mês exibido
     hourlyRate,
     customMascots,
     currentMonth: month,
@@ -376,6 +403,7 @@ export default function useFinance() {
         accountId: isAcc ? d.accountId : null,
         cardId: isCard ? d.accountId : null,
         note: d.note || '',
+        method: d.method || (isCard ? 'credit' : null),
         date,
         month: dt.getMonth(),
         year: dt.getFullYear(),
@@ -489,14 +517,30 @@ export default function useFinance() {
 
   const saveCategory = async (d, id) => {
     const payload = { name: d.name, icon: d.icon || 'Tag', limit: Number(d.limit) || 0 };
-    if (id) return setDoc(dref('categories', id), payload, { merge: true });
+    if (id) {
+      const { limit, ...rest } = payload;
+      return setDoc(dref('categories', id), { ...rest, limits: { [key]: limit } }, { merge: true });
+    }
     return addDoc(col('categories'), { ...payload, order: categories.length });
   };
   const deleteCategory = (id) => deleteDoc(dref('categories', id));
-  const updateLimit = (id, value) => setDoc(dref('categories', id), { limit: Number(value) || 0 }, { merge: true });
-  const updateTotalLimit = (value) => update({ totalLimit: value === null ? null : Number(value) || 0 });
+  const updateLimit = (id, value) =>
+    setDoc(dref('categories', id), { limits: { [key]: Number(value) || 0 } }, { merge: true });
+
+  // limite total: vale deste mês em diante. null = voltar a usar a soma das categorias
+  const updateTotalLimit = (value) =>
+    update({ totalLimits: { [key]: value === null ? null : Number(value) || 0 } });
 
   const saveFixed = async (d, id) => {
+    // limite da categoria definido pelo fixo: vale deste mês em diante (não retroativo)
+    if (d.categoryId && d.categoryLimit != null) {
+      await setDoc(
+        dref('categories', d.categoryId),
+        { limits: { [key]: Number(d.categoryLimit) || 0 } },
+        { merge: true }
+      );
+    }
+
     const v = {
       name: d.name,
       amount: Number(d.amount) || 0,

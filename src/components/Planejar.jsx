@@ -1,4 +1,3 @@
-
 import { Gauge, Plus, Power, Repeat, Target, Trash2 } from 'lucide-react';
 import { money, moneyShort } from '../utils/format';
 import MonthBar from './MonthBar';
@@ -156,7 +155,7 @@ export default function Planejar({
         </span>
 
         <p className="text-gray-400 text-sm mb-2">
-          Os fixos com categoria contam no limite dela e no limite do mês.
+          Os fixos com categoria contam no limite dela e no limite do mês. Mudou um limite? Vale a partir deste mês, os anteriores não mudam.
         </p>
 
         <div className="flex items-center gap-3 py-3 border-t border-gray-100">
@@ -178,7 +177,7 @@ export default function Planejar({
             <span className="text-gray-500 text-sm">R$</span>
 
             <input
-              key={`total-${state.totalLimit}-${state.categoriesLimit}`}
+              key={`total-${state.monthKey}-${state.totalLimit}-${state.categoriesLimit}`}
               defaultValue={hasTotal ? state.totalLimit : ''}
               placeholder={String(Math.round(state.categoriesLimit))}
               inputMode="decimal"
@@ -230,7 +229,7 @@ export default function Planejar({
                 <span className="text-gray-500 text-sm">R$</span>
 
                 <input
-                  key={`${c.id}-${c.limit}`}
+                  key={`${c.id}-${state.monthKey}-${c.limit}`}
                   defaultValue={c.limit}
                   inputMode="decimal"
                   onBlur={(e) => {

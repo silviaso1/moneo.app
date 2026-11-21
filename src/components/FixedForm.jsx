@@ -15,6 +15,18 @@ export default function FixedForm({ fixedToEdit, accounts, cards = [], categorie
   const [note, setNote] = useState(fixedToEdit?.note || '');
   const isExp = type === 'expense';
 
+  const limitOf = (id) => {
+    const c = categories.find((x) => x.id === id);
+    return c && Number(c.limit) > 0 ? String(c.limit) : '';
+  };
+  const [limitDraft, setLimitDraft] = useState(limitOf(fixedToEdit?.categoryId));
+
+  const pickCategory = (id) => {
+    const next = categoryId === id ? null : id;
+    setCategoryId(next);
+    setLimitDraft(next ? limitOf(next) : '');
+  };
+
   const Toggle = (
     <div className="flex bg-[#f2f2f2] rounded-2xl p-1 mb-5">
       {[['expense', 'Saída'], ['income', 'Entrada']].map(([id, label]) => (
@@ -49,6 +61,27 @@ export default function FixedForm({ fixedToEdit, accounts, cards = [], categorie
     );
   }
 
+  const submit = () => {
+    const payload = {
+      name: name.trim(),
+      amount: cents / 100,
+      type,
+      day: Number(day) || 1,
+      categoryId: isExp ? categoryId : null,
+      accountId,
+      note,
+    };
+
+    // só manda o limite se a pessoa realmente mudou o valor
+    if (isExp && categoryId && limitDraft !== '') {
+      const v = Number(String(limitDraft).replace(',', '.')) || 0;
+      const current = Number(categories.find((c) => c.id === categoryId)?.limit) || 0;
+      if (v !== current) payload.categoryLimit = v;
+    }
+
+    onSubmit(payload, fixedToEdit?.id);
+  };
+
   return (
     <div className="flex flex-col">
       {Toggle}
@@ -80,7 +113,7 @@ export default function FixedForm({ fixedToEdit, accounts, cards = [], categorie
               <button
                 key={c.id}
                 type="button"
-                onClick={() => setCategoryId(categoryId === c.id ? null : c.id)}
+                onClick={() => pickCategory(c.id)}
                 className={`flex items-center gap-2 px-3 py-2 rounded-full font-semibold border text-sm ${
                   categoryId === c.id ? 'bg-black text-white border-black' : 'bg-white border-gray-200'
                 }`}
@@ -89,6 +122,27 @@ export default function FixedForm({ fixedToEdit, accounts, cards = [], categorie
               </button>
             ))}
           </div>
+
+          {categoryId && (
+            <div className="mt-4">
+              <p className="font-semibold text-sm text-gray-600 mb-2">
+                Limite da categoria <span className="font-normal text-gray-400">(a partir de {monthLabel})</span>
+              </p>
+              <div className="flex items-center gap-2 bg-[#f2f2f2] rounded-xl px-3 py-3">
+                <span className="text-gray-500 text-sm">R$</span>
+                <input
+                  value={limitDraft}
+                  onChange={(e) => setLimitDraft(e.target.value.replace(/[^\d,.]/g, ''))}
+                  inputMode="decimal"
+                  placeholder="0"
+                  className="w-full bg-transparent outline-none font-bold text-[16px]"
+                />
+              </div>
+              <p className="text-gray-400 text-xs mt-2">
+                Mudar aqui vale deste mês em diante. Os meses anteriores não mudam.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -104,12 +158,7 @@ export default function FixedForm({ fixedToEdit, accounts, cards = [], categorie
       <button
         type="button"
         disabled={!name.trim() || cents === 0}
-        onClick={() =>
-          onSubmit(
-            { name: name.trim(), amount: cents / 100, type, day: Number(day) || 1, categoryId: isExp ? categoryId : null, accountId, note },
-            fixedToEdit?.id
-          )
-        }
+        onClick={submit}
         className="w-full bg-black text-white rounded-full py-4 font-semibold disabled:opacity-30"
       >
         {fixedToEdit ? `Salvar a partir de ${monthLabel}` : `Salvar (${moneyShort(cents / 100)}/mês)`}

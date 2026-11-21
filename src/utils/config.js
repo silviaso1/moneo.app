@@ -1,12 +1,12 @@
 export const SHORTCUTS = {
-  investment: 'Juros',
+  investment: 'Rendimento',
   fixeds: 'Fixos',
   limits: 'Limites',
   invoices: 'Faturas',
   expense: 'Gasto',
   income: 'Receita',
   statement: 'Transações',
-  investments: 'Juros',
+  investments: 'Investimentos',
   planejar: 'Planejar',
   graphs: 'Gráficos',
   family: 'Família',
@@ -20,7 +20,7 @@ export const NAV = {
   charts: 'Planejar',
   graphs: 'Gráficos',
   invoices: 'Faturas',
-  investments: 'Juros',
+  investments: 'Investimentos',
   family: 'Família',
   settings: 'Ajustes',
 };

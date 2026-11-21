@@ -1,8 +1,8 @@
-
 import { useMemo, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Search, Trash2 } from 'lucide-react';
 import { months } from '../store';
 import { money } from '../utils/format';
+import { methodLabel } from '../utils/paymentMethods';
 import MonthBar from './MonthBar';
 import CategoryIcon from './CategoryIcon';
 
@@ -147,6 +147,7 @@ export default function Transactions({ state, onChangeMonth, onDelete, onReceive
                         {[
                           cat?.name,
                           where(t),
+                          methodLabel(t.method),
                           future ? 'agendado' : null,
                         ].filter(Boolean).join(' · ') || '—'}
                       </p>

@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import {
   ChevronDown, ChevronRight, ChevronUp, CreditCard, ImagePlus,
   Landmark, LayoutGrid, LogOut, Menu, Plus, Smile, Upload, X, Save,
-  Palette, KeyRound, Trash2, ShieldAlert, UserCircle,
+  Palette, KeyRound, Trash2, ShieldAlert, UserCircle, PiggyBank,
 } from 'lucide-react';
 import { money } from '../utils/format';
 import { SHORTCUTS, NAV, safeShortcuts, safeNav, THEME_COLORS } from '../utils/config';
 import { mascotPacks, animeCatalog } from '../store';
 import { brazilianBanks, getBankLogoUrl } from '../utils/banks';
+import { INVESTMENT_TYPES, INVESTMENT_GROUPS, DEFAULT_INV_TYPES } from '../utils/investmentTypes';
 import { useAuth } from '../contexts/AuthContext';
 import MonthBar from './MonthBar';
 import CategoryIcon from './CategoryIcon';
@@ -78,6 +79,14 @@ export default function Settings({
   const selectedColor = state.mascotColor || mascotPacks[selectedPack].defaultColor;
   const anime = animeCatalog[state.animeId] || animeCatalog['jujutsu-kaisen'];
   const selectedAnimeCharacter = anime.characters[state.animeCharacter] ? state.animeCharacter : 'gojo';
+
+  const activeInv = Array.isArray(state.investmentTypes) && state.investmentTypes.length
+    ? state.investmentTypes
+    : DEFAULT_INV_TYPES;
+  const toggleInvType = (id) => {
+    const next = activeInv.includes(id) ? activeInv.filter((x) => x !== id) : [...activeInv, id];
+    if (next.length) onUpdateSettings({ investmentTypes: next });
+  };
 
   useEffect(() => {
     setColorDraft(selectedColor);
@@ -441,6 +450,26 @@ export default function Settings({
         </div>
       </Section>
 
+      <Section icon={<PiggyBank size={18} />} title="Tipos de investimento">
+        <p className="text-gray-400 text-sm mb-3">Escolha os tipos que aparecem ao lançar um rendimento.</p>
+        {INVESTMENT_GROUPS.map((g) => (
+          <div key={g} className="mb-4">
+            <p className="text-xs font-semibold text-gray-500 mb-2">{g}</p>
+            <div className="flex flex-wrap gap-2">
+              {INVESTMENT_TYPES.filter((t) => t.group === g).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => toggleInvType(t.id)}
+                  className={`px-4 py-2 rounded-full border text-sm font-semibold ${activeInv.includes(t.id) ? 'bg-black text-white border-black' : 'bg-white border-gray-200'}`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </Section>
+
       <Section title="Preferências">
         <div className="flex flex-col divide-y divide-gray-100">
           <div className="flex items-center justify-between py-3">
@@ -448,7 +477,7 @@ export default function Settings({
             <Switch on={state.followCursor} onClick={onToggleFollow} />
           </div>
           <div className="flex items-center justify-between py-3">
-            <span className="font-medium">Ocultar juros</span>
+            <span className="font-medium">Ocultar investimentos</span>
             <Switch on={state.hideSaved} onClick={onToggleSaved} />
           </div>
         </div>

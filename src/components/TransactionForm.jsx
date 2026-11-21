@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, Clock } from 'lucide-react';
 import { moneyShort, money, todayISO, toNumber } from '../utils/format';
 import { formatHours } from '../utils/hours';
+import { methodsFor } from '../utils/paymentMethods';
 import CategoryIcon from './CategoryIcon';
 import DatePicker from './DatePicker';
 import { AmountDisplay, Keypad } from './AmountPad';
@@ -19,13 +20,22 @@ export default function TransactionForm({
   const [date, setDate] = useState(todayISO());
   const [note, setNote] = useState('');
   const [n, setN] = useState(1);
+  const [hasInterest, setHasInterest] = useState(false);
   const [instValue, setInstValue] = useState('');
   const [receivable, setReceivable] = useState(false);
   const [recvAmount, setRecvAmount] = useState('');
+  const [methodState, setMethodState] = useState('pix');
 
   const isExp = type === 'expense';
   const total = cents / 100;
   const inst = toNumber(instValue);
+
+  // cartão cadastrado = crédito automático (vai pra fatura)
+  const isCard = cards.some((c) => c.id === accountId);
+  const methodList = methodsFor(type);
+  const method = isCard
+    ? 'credit'
+    : methodList.some((m) => m.id === methodState) ? methodState : methodList[0].id;
 
   // Horas de trabalho que esse gasto custa
   const hours = isExp && hourlyRate > 0 && total > 0 ? total / hourlyRate : 0;
@@ -108,6 +118,24 @@ export default function TransactionForm({
       <p className="font-semibold text-sm text-gray-600 mb-2">Conta</p>
       <PayChips accounts={accounts} cards={cards} value={accountId} onChange={setAccountId} />
 
+      <p className="font-semibold text-sm text-gray-600 mb-2 mt-4">Forma de pagamento</p>
+      {isCard ? (
+        <p className="text-gray-400 text-sm">Crédito · entra na fatura do cartão</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {methodList.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setMethodState(m.id)}
+              className={`px-4 py-2 rounded-full text-sm font-semibold ${method === m.id ? 'bg-black text-white' : 'bg-[#f2f2f2]'}`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="border-t border-gray-200 mt-4" />
       <button type="button" onClick={() => setMore(!more)} className="w-full flex items-center justify-between py-4 font-bold">
         Data, nota e mais <ChevronDown size={18} className={more ? 'rotate-180' : ''} />
@@ -134,18 +162,31 @@ export default function TransactionForm({
               <Stepper value={n} onChange={setN} />
             </div>
             {n > 1 && (
-              <div>
-                <p className="font-semibold text-sm text-gray-600 mb-2">Valor de cada parcela (opcional)</p>
-                <input
-                  value={instValue}
-                  onChange={(e) => setInstValue(e.target.value.replace(/[^\d,.]/g, ''))}
-                  inputMode="decimal"
-                  placeholder={`${money(total / n)} (sem juros)`}
-                  className={fieldRound}
-                />
-                <p className="text-gray-400 text-sm mt-2">
-                  {inst > 0 ? `Total com juros: ${money(inst * n)}` : 'Tem juros? Digite o valor real da parcela.'}
-                </p>
+              <div className="flex flex-col gap-3">
+                <p className="font-bold">{n}x de {money(total / n)}</p>
+
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">Tem juros?</p>
+                    <p className="text-gray-400 text-sm">Se tiver, digite quanto paga por mês</p>
+                  </div>
+                  <Switch on={hasInterest} onClick={() => setHasInterest(!hasInterest)} />
+                </div>
+
+                {hasInterest && (
+                  <div>
+                    <input
+                      value={instValue}
+                      onChange={(e) => setInstValue(e.target.value.replace(/[^\d,.]/g, ''))}
+                      inputMode="decimal"
+                      placeholder="Valor de cada parcela (R$)"
+                      className={fieldRound}
+                    />
+                    <p className="text-gray-400 text-sm mt-2">
+                      {inst > 0 ? `Total com juros: ${money(inst * n)}` : 'Digite o valor real da parcela.'}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -175,16 +216,17 @@ export default function TransactionForm({
 
       <button
         type="button"
-        disabled={cents === 0 || (isExp && categories.length > 0 && !categoryId)}
+        disabled={cents === 0 || (isExp && categories.length > 0 && !categoryId) || (n > 1 && hasInterest && !(inst > 0))}
         onClick={() =>
           onSubmit(type, {
             amount: total,
             categoryId: isExp ? categoryId : null,
             accountId,
+            method,
             note,
             date,
             installments: n,
-            installmentAmount: n > 1 ? inst : 0,
+            installmentAmount: n > 1 && hasInterest ? inst : 0,
             receivable: isExp && receivable,
             receivableAmount: toNumber(recvAmount) || total,
           })

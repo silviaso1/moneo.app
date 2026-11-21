@@ -95,6 +95,7 @@ export default function Dashboard({
   };
 
   const [openCat, setOpenCat] = useState(null);
+  const [catSort, setCatSort] = useState('default');
   const [off, setOff] = useState({ x: 0, y: 0 });
   const [idx, setIdx] = useState(0);
   const mascotRef = useRef(null);
@@ -187,6 +188,24 @@ export default function Dashboard({
     return `dia ${f.day} · ${verb}`;
   };
 
+  const SORTS = [
+    ['default', 'Padrão'],
+    ['value-desc', 'Maior valor'],
+    ['value-asc', 'Menor valor'],
+    ['name-asc', 'A–Z'],
+    ['name-desc', 'Z–A'],
+  ];
+  const sortFn = (getName, getVal) => (a, b) => {
+    const [by, dir] = catSort.split('-');
+    const s = dir === 'desc' ? -1 : 1;
+    if (by === 'value') return s * (getVal(a) - getVal(b));
+    if (by === 'name') return s * String(getName(a)).localeCompare(String(getName(b)), 'pt-BR');
+    return 0;
+  };
+  const sortedCategories = [...state.categories].sort(
+    sortFn((c) => c.name, (c) => state.categorySpent[c.id] || 0)
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <MonthBar month={month} year={year} onChange={onChangeMonth} onFilter={() => onTab('settings')} />
@@ -268,16 +287,36 @@ export default function Dashboard({
       </Card>
 
       <Card icon={<Gauge size={18} />} title="Limites do mês" action="Ajustar" onAction={() => onTab('charts')}>
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-3">
+          {SORTS.map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setCatSort(id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${catSort === id ? 'bg-black text-white' : 'bg-[#f2f2f2]'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-col divide-y divide-gray-100">
-          {state.categories.map((c) => {
+          {sortedCategories.map((c) => {
             const spent = state.categorySpent[c.id] || 0;
             const pct = c.limit > 0 ? Math.min(100, (spent / c.limit) * 100) : spent > 0 ? 100 : 0;
             const isOver = c.limit > 0 && spent > c.limit;
             const expanded = openCat === c.id;
             const txs = state.monthTransactions
-              .filter((t) => t.type === 'expense' && !t.fixedId && t.categoryId === c.id)
-              .slice(0, 5);
+              .filter((t) => t.type === 'expense' && !t.fixedId && t.categoryId === c.id);
             const fxs = state.fixeds.filter((f) => f.type !== 'income' && f.categoryId === c.id);
+            const items = [
+              ...fxs.map((f) => ({ id: `f-${f.id}`, label: `${f.name} (fixo)`, amount: Number(f.amount) || 0, date: '' })),
+              ...txs.map((t) => ({
+                id: t.id,
+                label: t.note || catName(t.categoryId),
+                amount: Number(t.amount) || 0,
+                date: t.date ? t.date.split('-').reverse().slice(0, 2).join('/') : '',
+              })),
+            ];
+            if (catSort !== 'default') items.sort(sortFn((x) => x.label, (x) => x.amount));
             return (
               <div key={c.id} className="py-3">
                 <button className="w-full flex items-center gap-3 text-left" onClick={() => setOpenCat(expanded ? null : c.id)}>
@@ -303,17 +342,13 @@ export default function Dashboard({
                 </button>
                 {expanded && (
                   <div className="ml-[60px] mt-2 flex flex-col gap-1 text-sm">
-                    {txs.length === 0 && fxs.length === 0 && <p className="text-gray-400">Nenhum gasto aqui.</p>}
-                    {fxs.map((f) => (
-                      <div key={f.id} className="flex justify-between">
-                        <span className="text-gray-600 truncate">{f.name} (fixo)</span>
-                        <span className="font-semibold">-{money(f.amount)}</span>
-                      </div>
-                    ))}
-                    {txs.map((t) => (
-                      <div key={t.id} className="flex justify-between">
-                        <span className="text-gray-600 truncate">{t.note || catName(t.categoryId)}</span>
-                        <span className="font-semibold">-{money(t.amount)}</span>
+                    {items.length === 0 && <p className="text-gray-400">Nenhum gasto aqui.</p>}
+                    {items.map((x) => (
+                      <div key={x.id} className="flex justify-between gap-2">
+                        <span className="text-gray-600 truncate">
+                          {x.label}{x.date && <span className="text-gray-400"> · {x.date}</span>}
+                        </span>
+                        <span className="font-semibold whitespace-nowrap">-{money(x.amount)}</span>
                       </div>
                     ))}
                   </div>
@@ -424,7 +459,7 @@ export default function Dashboard({
       {!state.hideSaved && (
         <button onClick={() => onTab('investments')} className="bg-white rounded-[28px] p-5 shadow-sm text-left">
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-2 text-gray-600 font-semibold"><PiggyBank size={18} /> Juros em {months[month].toLowerCase()}</span>
+            <span className="flex items-center gap-2 text-gray-600 font-semibold"><PiggyBank size={18} /> Investimentos em {months[month].toLowerCase()}</span>
             <span className="flex items-center gap-1 font-bold">{money(totalSaved || 0)} <ChevronRight size={16} /></span>
           </div>
           <p className="text-gray-400 text-sm mt-1">No ano de {year}: {money(state.yearSaved)}</p>
