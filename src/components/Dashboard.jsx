@@ -69,10 +69,31 @@ function Card({ icon, title, action, onAction, children }) {
 }
 
 export default function Dashboard({
-  state, percent, remaining, totalAvailable, mascotState, totalBalance, totalSaved,
+  state: rawState, percent, remaining, totalAvailable, mascotState, totalBalance, totalSaved,
   onChangeMonth, onToggleBalance, onToggleShowAll, onTab, onOpenModal,
   onToggleFixed, onNewFixed, onAddInvestment,
 }) {
+  // Garante que nenhum campo usado pelo Dashboard seja undefined
+  const state = {
+    ...rawState,
+    accounts: rawState?.accounts ?? [],
+    categories: rawState?.categories ?? [],
+    fixeds: rawState?.fixeds ?? [],
+    openInvoices: rawState?.openInvoices ?? [],
+    monthTransactions: rawState?.monthTransactions ?? [],
+    transactions: rawState?.transactions ?? [],
+    categorySpent: rawState?.categorySpent ?? {},
+    paidFixed: rawState?.paidFixed ?? {},
+    limit: rawState?.limit ?? 0,
+    spent: rawState?.spent ?? 0,
+    income: rawState?.income ?? 0,
+    sobra: rawState?.sobra ?? 0,
+    dailySpent: rawState?.dailySpent ?? 0,
+    fixedIncomeTotal: rawState?.fixedIncomeTotal ?? 0,
+    fixedExpenseTotal: rawState?.fixedExpenseTotal ?? 0,
+    yearSaved: rawState?.yearSaved ?? 0,
+  };
+
   const [openCat, setOpenCat] = useState(null);
   const [off, setOff] = useState({ x: 0, y: 0 });
   const [idx, setIdx] = useState(0);
@@ -363,7 +384,7 @@ export default function Dashboard({
         </div>
         <div className="flex flex-col divide-y divide-gray-100 border-t border-gray-100">
           {(state.showAllAccounts ? state.accounts : state.accounts.slice(0, 3)).map((a) => {
-            const bank = brazilianBanks.find(b => b.name === a.name);
+            const bank = brazilianBanks.find((b) => b.name === a.name);
             const logoUrl = bank ? getBankLogoUrl(bank.ispb) : null;
 
             return (
@@ -371,9 +392,9 @@ export default function Dashboard({
                 <span className="flex items-center gap-2 font-medium">
                   <div className="w-6 h-6 rounded-full bg-white border border-gray-100 flex items-center justify-center overflow-hidden shrink-0">
                     {logoUrl ? (
-                      <img 
-                        src={logoUrl} 
-                        alt={a.name} 
+                      <img
+                        src={logoUrl}
+                        alt={a.name}
                         className="w-4 h-4 object-contain"
                         onError={(e) => {
                           e.target.style.display = 'none';
@@ -381,7 +402,7 @@ export default function Dashboard({
                         }}
                       />
                     ) : null}
-                    <span 
+                    <span
                       className={`w-3 h-3 rounded-full ${logoUrl ? 'hidden' : 'block'}`}
                       style={{ background: bank?.color || a.color || '#000' }}
                     />
@@ -404,7 +425,7 @@ export default function Dashboard({
         <button onClick={() => onTab('investments')} className="bg-white rounded-[28px] p-5 shadow-sm text-left">
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-2 text-gray-600 font-semibold"><PiggyBank size={18} /> Juros em {months[month].toLowerCase()}</span>
-            <span className="flex items-center gap-1 font-bold">{money(totalSaved)} <ChevronRight size={16} /></span>
+            <span className="flex items-center gap-1 font-bold">{money(totalSaved || 0)} <ChevronRight size={16} /></span>
           </div>
           <p className="text-gray-400 text-sm mt-1">No ano de {year}: {money(state.yearSaved)}</p>
         </button>

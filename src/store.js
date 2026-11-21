@@ -10,8 +10,6 @@ export const shortMonths = [
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
 ];
 
-// EXPRESSÕES DOS MASCOTES
-
 const faces = {
   normal: (f) => `
     <circle cx="40" cy="48" r="3.5" fill="${f}"/>
@@ -36,7 +34,6 @@ const faces = {
   `
 };
 
-// DESENHOS DOS MASCOTES ORIGINAIS
 
 const characters = {
   skunk: (c) => `
@@ -80,7 +77,6 @@ const characters = {
   `
 };
 
-// GERADOR DOS MASCOTES ORIGINAIS
 
 const buildCharacter = (id, color) => {
   const drawing = characters[id];
@@ -99,7 +95,6 @@ const buildCharacter = (id, color) => {
   );
 };
 
-// EXPRESSÕES DOS PERSONAGENS DE ANIME EM PNG
 
 const buildAnimeCharacter = (id) => {
   const basePath = `/assets/temaAnime/${id}`;
@@ -112,7 +107,6 @@ const buildAnimeCharacter = (id) => {
   };
 };
 
-// CATÁLOGO DE ANIMES
 
 export const animeCatalog = {
   'jujutsu-kaisen': {
@@ -131,7 +125,6 @@ export const animeCatalog = {
   }
 };
 
-// REGISTRO DOS MASCOTES
 
 export const mascotPacks = {
   skunk: {
@@ -201,7 +194,6 @@ export const mascotPacks = {
   }
 };
 
-// RETORNA O MASCOTE E A COR SELECIONADOS
 
 export const getPack = (id = 'skunk', color) => {
   const packId = typeof id === 'string' ? id : 'skunk';
@@ -226,7 +218,6 @@ export const getPack = (id = 'skunk', color) => {
   );
 };
 
-// MASCOTES PARA COMPATIBILIDADE COM CÓDIGOS ANTIGOS
 
 export const mascots = mascotPacks.skunk.set;
 
@@ -237,12 +228,9 @@ export const speechBubbles = {
   angry: 'Mercado ESTOUROU. Eu avisei. Tá, não avisei, mas pensei.'
 };
 
-// ESTADO INICIAL
-
-// ESTADO INICIAL — tudo zerado
 export const initialState = {
   currentMonth: 10,
-  limit: 0,                 // era 984
+  limit: 0,                
   spent: 0,
   income: 0,
   transactions: [],
@@ -262,7 +250,7 @@ export const initialState = {
   hideSaved: false,
   hideTotalBalance: false,
   showAllAccounts: false,
-  themeColor: 'purple',     // NOVO — tema roxo padrão
+  themeColor: 'purple',    
 };
 
 // CATEGORIAS

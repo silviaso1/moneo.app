@@ -17,7 +17,7 @@ export default function FixedForm({ fixedToEdit, accounts, cards = [], categorie
 
   const Toggle = (
     <div className="flex bg-[#f2f2f2] rounded-2xl p-1 mb-5">
-      {[['expense', 'Saída'], ['income', 'Entrada (salário)']].map(([id, label]) => (
+      {[['expense', 'Saída'], ['income', 'Entrada']].map(([id, label]) => (
         <button
           key={id}
           type="button"

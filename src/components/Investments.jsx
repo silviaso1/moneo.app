@@ -82,7 +82,7 @@ export default function Investments({ state, onChangeMonth, onAdd, onEdit, onDel
                 <p className="font-bold whitespace-nowrap text-black">+{show(i.amount ?? i.value ?? 0)}</p>
                 <button onClick={() => onEdit(i)} className="text-gray-400 p-1"><Pencil size={16} /></button>
                 <button
-                  onClick={() => window.confirm('Excluir este rendimento?') && onDelete(i.id)}
+                  onClick={() => onDelete(i.id)}
                   className="text-gray-300 hover:text-rose-600 p-1"
                 >
                   <Trash2 size={16} />

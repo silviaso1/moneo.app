@@ -15,6 +15,7 @@ import GoogleLink from './GoogleLink';
 import Mascot from './Mascot';
 import { Switch } from './ui';
 import Modal from './Modal';
+import { BankLogo, CardBrand } from './CardBadge';
 
 function Section({ icon, title, onNew, children }) {
   return (
@@ -43,13 +44,18 @@ export default function Settings({
   onToggleFollow, onToggleSaved,
   onSelectTheme,
   onLogout,
+  onUpdateSettings,
 }) {
   const [busy, setBusy] = useState(null);
   const [colorDraft, setColorDraft] = useState(state.mascotColor || '#1A1A1A');
-  
+
   const { user, isGoogleOnly, addEmailPassword, changePassword, deleteAccount, updateUserProfile } = useAuth();
   const [name, setName] = useState(user?.displayName || '');
   const [savingName, setSavingName] = useState(false);
+
+  const [incomeValue, setIncomeValue] = useState(state.monthlyIncome || '');
+  const [hoursValue, setHoursValue] = useState(state.monthlyHours || '');
+  const [savingIncome, setSavingIncome] = useState(false);
 
   const googleOnly = isGoogleOnly();
 
@@ -62,6 +68,9 @@ export default function Settings({
   const [authError, setAuthError] = useState('');
   const [authInfo, setAuthInfo] = useState('');
 
+  // Estado para confirmar exclusão
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
   const sc = safeShortcuts(state.shortcuts);
   const nav = safeNav(state.navItems);
   const custom = state.customMascots || {};
@@ -70,8 +79,12 @@ export default function Settings({
   const anime = animeCatalog[state.animeId] || animeCatalog['jujutsu-kaisen'];
   const selectedAnimeCharacter = anime.characters[state.animeCharacter] ? state.animeCharacter : 'gojo';
 
-  useEffect(() => setColorDraft(selectedColor), [selectedColor]);
-  useEffect(() => setName(user?.displayName || ''), [user]);
+  useEffect(() => {
+    setColorDraft(selectedColor);
+    setName(user?.displayName || '');
+    setIncomeValue(state.monthlyIncome || '');
+    setHoursValue(state.monthlyHours || '');
+  }, [selectedColor, user, state.monthlyIncome, state.monthlyHours]);
 
   const updateColor = (value) => {
     setColorDraft(value);
@@ -82,11 +95,25 @@ export default function Settings({
     if (!name.trim()) return;
     setSavingName(true);
     try {
-      await updateUserProfile(name.trim());
+      await updateUserProfile({ name: name.trim() });
     } catch (e) {
       alert('Erro ao atualizar nome.');
     } finally {
       setSavingName(false);
+    }
+  };
+
+  const handleSaveIncome = async () => {
+    setSavingIncome(true);
+    try {
+      await onUpdateSettings({
+        monthlyIncome: Number(incomeValue) || 0,
+        monthlyHours: Number(hoursValue) || 0,
+      });
+    } catch (e) {
+      alert('Erro ao salvar renda.');
+    } finally {
+      setSavingIncome(false);
     }
   };
 
@@ -198,10 +225,15 @@ export default function Settings({
         <div className="flex flex-col divide-y divide-gray-100">
           {(state.cards || []).map((c) => (
             <button key={c.id} onClick={() => onEditCard(c)} className="flex items-center gap-3 text-left py-3">
-              <span className="w-12 h-12 shrink-0 rounded-full bg-[#f2f2f2] flex items-center justify-center"><CreditCard size={20} /></span>
+              <span className="w-12 h-12 shrink-0 rounded-full bg-[#f2f2f2] flex items-center justify-center overflow-hidden">
+                <BankLogo name={c.bank} size={24} fallback={<CreditCard size={20} />} />
+              </span>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold truncate">Cartão {c.name}</p>
-                <p className="text-gray-400 text-sm">Cartão · fecha dia {c.closingDay} · vence dia {c.dueDay}</p>
+                <p className="text-gray-400 text-sm flex items-center gap-2">
+                  <CardBrand brand={c.brand} height={16} />
+                  <span className="truncate">Cartão · fecha dia {c.closingDay} · vence dia {c.dueDay}</span>
+                </p>
               </div>
               <ChevronRight size={18} className="text-gray-400" />
             </button>
@@ -215,20 +247,9 @@ export default function Settings({
                 <button onClick={() => onEditAccount(a)} className="flex-1 flex items-center gap-3 text-left min-w-0">
                   <span className="w-12 h-12 shrink-0 rounded-full bg-[#f2f2f2] flex items-center justify-center overflow-hidden">
                     {logoUrl ? (
-                      <img 
-                        src={logoUrl} 
-                        alt={a.name} 
-                        className="w-6 h-6 object-contain"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                          e.target.nextSibling.style.display = 'block';
-                        }}
-                      />
+                      <img src={logoUrl} alt={a.name} className="w-6 h-6 object-contain" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
                     ) : null}
-                    <span 
-                      className={`w-4 h-4 rounded-full ${logoUrl ? 'hidden' : 'block'}`}
-                      style={{ background: a.color || '#000' }} 
-                    />
+                    <span className={`w-4 h-4 rounded-full ${logoUrl ? 'hidden' : 'block'}`} style={{ background: a.color || '#000' }} />
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold truncate">{a.name}</p>
@@ -240,7 +261,7 @@ export default function Settings({
                   <button disabled={i === 0} onClick={() => onMoveAccount(a.id, -1)} className="disabled:opacity-20"><ChevronUp size={16} /></button>
                   <button disabled={i === (state.accounts || []).length - 1} onClick={() => onMoveAccount(a.id, 1)} className="disabled:opacity-20"><ChevronDown size={16} /></button>
                 </div>
-                <button onClick={() => window.confirm(`Excluir a conta "${a.name}"?`) && onDeleteAccount(a.id)} className="text-gray-300 hover:text-rose-600 p-1"><Trash2 size={16} /></button>
+                <button onClick={() => setDeleteConfirm({ type: 'account', id: a.id, name: a.name })} className="text-gray-300 hover:text-rose-600 p-1"><Trash2 size={16} /></button>
               </div>
             );
           })}
@@ -268,15 +289,8 @@ export default function Settings({
         <p className="text-gray-400 text-sm mb-3">Escolha a cor de destaque. O roxo é o padrão.</p>
         <div className="flex flex-wrap gap-3">
           {Object.entries(THEME_COLORS).map(([id, t]) => (
-            <button
-              key={id}
-              onClick={() => onSelectTheme(id)}
-              className={`flex flex-col items-center gap-1 p-2 rounded-2xl border-2 transition ${state.themeColor === id ? 'border-black' : 'border-transparent'}`}
-            >
-              <span
-                className="w-12 h-12 rounded-full border-2 border-white shadow"
-                style={{ background: `linear-gradient(135deg, ${t.from}, ${t.to})` }}
-              />
+            <button key={id} onClick={() => onSelectTheme(id)} className={`flex flex-col items-center gap-1 p-2 rounded-2xl border-2 transition ${state.themeColor === id ? 'border-black' : 'border-transparent'}`}>
+              <span className="w-12 h-12 rounded-full border-2 border-white shadow" style={{ background: `linear-gradient(135deg, ${t.from}, ${t.to})` }} />
               <span className="text-xs font-semibold">{t.name}</span>
             </button>
           ))}
@@ -299,44 +313,27 @@ export default function Settings({
             <p className="text-sm font-semibold mb-2">Anime</p>
             <div className="flex flex-wrap gap-2">
               {Object.entries(animeCatalog).map(([id, item]) => (
-                <button
-                  key={id}
-                  onClick={() => onSelectAnimeCharacter(
-                    anime.characters[selectedAnimeCharacter] ? selectedAnimeCharacter : 'gojo',
-                    id
-                  )}
-                  className={`px-4 py-2 rounded-full text-sm font-semibold border ${state.animeId === id ? 'bg-black text-white border-black' : 'border-gray-200'}`}
-                >
+                <button key={id} onClick={() => onSelectAnimeCharacter(anime.characters[selectedAnimeCharacter] ? selectedAnimeCharacter : 'gojo', id)} className={`px-4 py-2 rounded-full text-sm font-semibold border ${state.animeId === id ? 'bg-black text-white border-black' : 'border-gray-200'}`}>
                   {item.name}
                 </button>
               ))}
             </div>
-
             <p className="text-sm font-semibold mt-5 mb-2">Personagem</p>
             <div className="grid grid-cols-2 gap-3">
               {Object.entries(anime.characters).map(([id, character]) => (
-                <button
-                  key={id}
-                  onClick={() => onSelectAnimeCharacter(id, state.animeId)}
-                  className={`rounded-2xl p-3 flex flex-col items-center gap-2 border transition ${selectedAnimeCharacter === id ? 'border-black bg-white shadow-sm' : 'border-transparent bg-[#f2f2f2]'}`}
-                >
-                  <div className="w-32 h-32">
-                    <Mascot mood="normal" pack={`anime-${id}`} />
-                  </div>
+                <button key={id} onClick={() => onSelectAnimeCharacter(id, state.animeId)} className={`rounded-2xl p-3 flex flex-col items-center gap-2 border transition ${selectedAnimeCharacter === id ? 'border-black bg-white shadow-sm' : 'border-transparent bg-[#f2f2f2]'}`}>
+                  <div className="w-32 h-32"><Mascot mood="normal" pack={`anime-${id}`} /></div>
                   <span className="text-sm font-semibold">{character.name}</span>
                   <span className="text-[10px] text-gray-400 text-center">{character.description}</span>
                 </button>
               ))}
             </div>
-
             <div className="mt-4 rounded-2xl bg-[#f2f2f2] p-4">
               <p className="font-semibold text-sm mb-3">Expressões</p>
               <div className="grid grid-cols-4 gap-2">
                 {MOODS.map(([mood, label]) => (
                   <div key={mood} className="flex flex-col items-center gap-1">
-                    <div className="w-14 h-14">
-                      <Mascot mood={mood} pack={`anime-${selectedAnimeCharacter}`} />
-                    </div>
+                    <div className="w-14 h-14"><Mascot mood={mood} pack={`anime-${selectedAnimeCharacter}`} /></div>
                     <span className="text-[10px] text-gray-500">{label}</span>
                   </div>
                 ))}
@@ -346,29 +343,15 @@ export default function Settings({
         ) : (
           <>
             <div className="grid grid-cols-3 gap-3 mt-4">
-              {Object.entries(mascotPacks)
-                .filter(([, p]) => p.category !== 'anime')
-                .map(([id, p]) => (
-                  <button
-                    key={id}
-                    onClick={() => onSelectPack(id)}
-                    className={`rounded-2xl p-3 flex flex-col items-center gap-2 border transition ${state.mascotPack === id ? 'border-black bg-white shadow-sm' : 'border-transparent bg-[#f2f2f2]'}`}
-                  >
-                    <div className="w-16 h-16">
-                      <Mascot mood="happy" pack={id} color={id === selectedPack ? selectedColor : p.defaultColor} />
-                    </div>
-                    <span className="text-sm font-semibold">{p.name}</span>
-                    <span className="text-[10px] text-gray-400 text-center">{p.description}</span>
-                  </button>
-                ))}
-              <button
-                disabled={!custom.normal}
-                onClick={() => onSelectPack('custom')}
-                className={`rounded-2xl p-3 flex flex-col items-center justify-center gap-2 border disabled:opacity-40 ${state.mascotPack === 'custom' ? 'border-black bg-white shadow-sm' : 'border-transparent bg-[#f2f2f2]'}`}
-              >
-                <div className="w-16 h-16 flex items-center justify-center">
-                  {custom.normal ? <Mascot mood="normal" pack="custom" custom={custom} /> : <Upload size={24} className="text-gray-400" />}
-                </div>
+              {Object.entries(mascotPacks).filter(([, p]) => p.category !== 'anime').map(([id, p]) => (
+                <button key={id} onClick={() => onSelectPack(id)} className={`rounded-2xl p-3 flex flex-col items-center gap-2 border transition ${state.mascotPack === id ? 'border-black bg-white shadow-sm' : 'border-transparent bg-[#f2f2f2]'}`}>
+                  <div className="w-16 h-16"><Mascot mood="happy" pack={id} color={id === selectedPack ? selectedColor : p.defaultColor} /></div>
+                  <span className="text-sm font-semibold">{p.name}</span>
+                  <span className="text-[10px] text-gray-400 text-center">{p.description}</span>
+                </button>
+              ))}
+              <button disabled={!custom.normal} onClick={() => onSelectPack('custom')} className={`rounded-2xl p-3 flex flex-col items-center justify-center gap-2 border disabled:opacity-40 ${state.mascotPack === 'custom' ? 'border-black bg-white shadow-sm' : 'border-transparent bg-[#f2f2f2]'}`}>
+                <div className="w-16 h-16 flex items-center justify-center">{custom.normal ? <Mascot mood="normal" pack="custom" custom={custom} /> : <Upload size={24} className="text-gray-400" />}</div>
                 <span className="text-sm font-semibold">Meu mascote</span>
               </button>
             </div>
@@ -383,27 +366,13 @@ export default function Settings({
                   </label>
                   <div className="flex-1 min-w-0">
                     <label className="text-xs font-semibold text-gray-500 block mb-1">Código HEX</label>
-                    <input
-                      value={colorDraft}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setColorDraft(value);
-                        if (/^#[0-9A-Fa-f]{6}$/.test(value)) onSelectMascotColor(value.toUpperCase());
-                      }}
-                      maxLength={7}
-                      placeholder="#1A1A1A"
-                      className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm font-mono outline-none focus:border-black"
-                    />
+                    <input value={colorDraft} onChange={(e) => { const value = e.target.value; setColorDraft(value); if (/^#[0-9A-Fa-f]{6}$/.test(value)) onSelectMascotColor(value.toUpperCase()); }} maxLength={7} placeholder="#1A1A1A" className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm font-mono outline-none focus:border-black" />
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 mt-4">
-                  {COLORS.map((color) => (
-                    <button key={color} onClick={() => updateColor(color)} title={color} className={`w-8 h-8 rounded-full border transition ${selectedColor.toUpperCase() === color ? 'border-black ring-2 ring-offset-2 ring-gray-400' : 'border-gray-200'}`} style={{ backgroundColor: color }} />
-                  ))}
+                  {COLORS.map((color) => (<button key={color} onClick={() => updateColor(color)} title={color} className={`w-8 h-8 rounded-full border transition ${selectedColor.toUpperCase() === color ? 'border-black ring-2 ring-offset-2 ring-gray-400' : 'border-gray-200'}`} style={{ backgroundColor: color }} />))}
                 </div>
-                <button onClick={() => updateColor(mascotPacks[selectedPack].defaultColor)} className="mt-4 text-xs font-semibold text-gray-500 hover:text-black">
-                  Restaurar cor original
-                </button>
+                <button onClick={() => updateColor(mascotPacks[selectedPack].defaultColor)} className="mt-4 text-xs font-semibold text-gray-500 hover:text-black">Restaurar cor original</button>
               </div>
             )}
           </>
@@ -414,9 +383,7 @@ export default function Settings({
           <div className="flex flex-col divide-y divide-gray-100">
             {MOODS.map(([mood, label]) => (
               <div key={mood} className="flex items-center gap-3 py-3">
-                <div className="w-12 h-12 rounded-full bg-[#f2f2f2] flex items-center justify-center overflow-hidden shrink-0">
-                  {custom[mood] ? <img src={custom[mood]} alt="" className="w-full h-full object-contain" /> : <ImagePlus size={18} className="text-gray-400" />}
-                </div>
+                <div className="w-12 h-12 rounded-full bg-[#f2f2f2] flex items-center justify-center overflow-hidden shrink-0">{custom[mood] ? <img src={custom[mood]} alt="" className="w-full h-full object-contain" /> : <ImagePlus size={18} className="text-gray-400" />}</div>
                 <p className="flex-1 font-semibold">{label}</p>
                 <label className="cursor-pointer text-sm font-semibold bg-[#f2f2f2] rounded-full px-4 py-2">
                   {busy === mood ? 'Enviando...' : custom[mood] ? 'Trocar' : 'Enviar PNG'}
@@ -489,60 +456,55 @@ export default function Settings({
 
       <Section icon={<UserCircle size={18} />} title="Meu Perfil">
         <p className="text-gray-400 text-sm mb-3">Este nome aparecerá para sua família.</p>
-        <div className="flex items-end gap-3">
+        <div className="flex items-end gap-3 mb-6">
           <div className="flex-1">
             <label className="text-xs font-semibold text-gray-500 mb-1 block">Nome e Sobrenome</label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: João Silva"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-black transition"
-            />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: João Silva" className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-black transition" />
           </div>
-          <button
-            disabled={savingName || !name.trim() || name.trim() === user?.displayName}
-            onClick={handleSaveName}
-            className="bg-black text-white rounded-xl px-4 py-3 font-semibold flex items-center gap-2 "
-          >
+          <button disabled={savingName || !name.trim() || name.trim() === user?.displayName} onClick={handleSaveName} className="bg-black text-white rounded-xl px-4 py-3 font-semibold flex items-center gap-2 disabled:opacity-50">
             <Save size={16} /> Salvar
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-2">
-          Se você entrou com o Google, puxamos o nome da sua conta. Você pode alterar se quiser.
-        </p>
+
+        <div className="border-t border-gray-100 pt-4">
+          <p className="font-bold text-gray-700 mb-1">Renda e Horas</p>
+          <p className="text-xs text-gray-400 mb-4">Usamos isso para calcular quantas horas da sua vida você gasta em cada compra.</p>
+
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Ganho por mês (R$)</label>
+              <input type="number" value={incomeValue} onChange={(e) => setIncomeValue(e.target.value)} placeholder="Ex: 3500" className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-black" />
+            </div>
+            <div className="flex-1">
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Horas por mês</label>
+              <input type="number" value={hoursValue} onChange={(e) => setHoursValue(e.target.value)} placeholder="Ex: 220" className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-black" />
+            </div>
+          </div>
+          <button onClick={handleSaveIncome} disabled={savingIncome} className="mt-3 w-full bg-black text-white rounded-xl py-3 font-semibold disabled:opacity-50">
+            {savingIncome ? 'Salvando...' : 'Salvar Renda e Horas'}
+          </button>
+        </div>
       </Section>
 
       <Section icon={<UserCircle size={18} />} title="Conta e segurança">
         <div className="flex flex-col divide-y divide-gray-100">
-
           {!googleOnly && (
             <button onClick={() => setModalAuth('change-pass')} className="flex items-center gap-3 py-4 text-left">
               <span className="w-10 h-10 rounded-full bg-[#f2f2f2] flex items-center justify-center"><KeyRound size={18} /></span>
-              <div className="flex-1">
-                <p className="font-semibold">Redefinir senha</p>
-                <p className="text-gray-400 text-xs">Trocar a senha de acesso</p>
-              </div>
+              <div className="flex-1"><p className="font-semibold">Redefinir senha</p><p className="text-gray-400 text-xs">Trocar a senha de acesso</p></div>
               <ChevronRight size={18} className="text-gray-400" />
             </button>
           )}
-
           {googleOnly && (
             <button onClick={() => setModalAuth('add-email')} className="flex items-center gap-3 py-4 text-left">
               <span className="w-10 h-10 rounded-full bg-[#f2f2f2] flex items-center justify-center"><KeyRound size={18} /></span>
-              <div className="flex-1">
-                <p className="font-semibold">Adicionar email e senha</p>
-                <p className="text-gray-400 text-xs">Sua conta só tem Google. Adicione outra forma de entrar.</p>
-              </div>
+              <div className="flex-1"><p className="font-semibold">Adicionar email e senha</p><p className="text-gray-400 text-xs">Sua conta só tem Google. Adicione outra forma de entrar.</p></div>
               <ChevronRight size={18} className="text-gray-400" />
             </button>
           )}
-
           <button onClick={() => setModalAuth('delete')} className="flex items-center gap-3 py-4 text-left text-rose-600">
             <span className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center"><Trash2 size={18} /></span>
-            <div className="flex-1">
-              <p className="font-semibold">Deletar minha conta</p>
-              <p className="text-gray-400 text-xs">Apaga tudo permanentemente</p>
-            </div>
+            <div className="flex-1"><p className="font-semibold">Deletar minha conta</p><p className="text-gray-400 text-xs">Apaga tudo permanentemente</p></div>
             <ChevronRight size={18} className="text-gray-400" />
           </button>
         </div>
@@ -554,68 +516,39 @@ export default function Settings({
         <LogOut size={18} /> Sair
       </button>
 
+      {/* MODAIS DE CONFIRMAÇÃO DE EXCLUSÃO */}
+      {deleteConfirm && (
+        <Modal open={true} onClose={() => setDeleteConfirm(null)} title="Confirmar exclusão">
+          <div className="flex flex-col gap-4">
+            <p className="text-gray-600">Tem certeza que deseja excluir a conta <b>{deleteConfirm.name}</b>?</p>
+            <div className="flex gap-2">
+              <button onClick={() => setDeleteConfirm(null)} className="flex-1 bg-gray-200 text-black rounded-full py-3 font-semibold">Cancelar</button>
+              <button onClick={() => { onDeleteAccount(deleteConfirm.id); setDeleteConfirm(null); }} className="flex-1 bg-rose-600 text-white rounded-full py-3 font-semibold">Excluir</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* MODAIS DE AUTENTICAÇÃO */}
       <Modal open={modalAuth === 'add-email'} onClose={closeAuth} title="Adicionar email e senha">
         <div className="flex flex-col gap-3">
-          <p className="text-gray-500 text-sm">
-            Sua conta só tem Google. Adicione um email e senha para ter outra forma de entrar.
-          </p>
-          <input
-            value={authEmail}
-            onChange={(e) => setAuthEmail(e.target.value)}
-            placeholder="seu@email.com"
-            type="email"
-            className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
-          />
-          <input
-            value={authNewPass}
-            onChange={(e) => setAuthNewPass(e.target.value)}
-            placeholder="Senha (6+ caracteres)"
-            type="password"
-            className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
-          />
-          <input
-            value={authPass2}
-            onChange={(e) => setAuthPass2(e.target.value)}
-            placeholder="Repita a senha"
-            type="password"
-            className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
-          />
+          <input value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="seu@email.com" type="email" className="border border-gray-200 rounded-xl px-4 py-3 outline-none" />
+          <input value={authNewPass} onChange={(e) => setAuthNewPass(e.target.value)} placeholder="Senha (6+ caracteres)" type="password" className="border border-gray-200 rounded-xl px-4 py-3 outline-none" />
+          <input value={authPass2} onChange={(e) => setAuthPass2(e.target.value)} placeholder="Repita a senha" type="password" className="border border-gray-200 rounded-xl px-4 py-3 outline-none" />
           {authError && <p className="text-rose-600 text-sm text-center">{authError}</p>}
           {authInfo && <p className="text-violet-600 text-sm text-center">{authInfo}</p>}
-          <button disabled={authBusy} onClick={submitAddEmail} className="bg-black text-white rounded-full py-3 font-semibold disabled:opacity-50">
-            {authBusy ? 'Aguarde...' : 'Adicionar'}
-          </button>
+          <button disabled={authBusy} onClick={submitAddEmail} className="bg-black text-white rounded-full py-3 font-semibold disabled:opacity-50">{authBusy ? 'Aguarde...' : 'Adicionar'}</button>
         </div>
       </Modal>
 
       <Modal open={modalAuth === 'change-pass'} onClose={closeAuth} title="Redefinir senha">
         <div className="flex flex-col gap-3">
-          <input
-            value={authCurrentPass}
-            onChange={(e) => setAuthCurrentPass(e.target.value)}
-            placeholder="Senha atual"
-            type="password"
-            className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
-          />
-          <input
-            value={authNewPass}
-            onChange={(e) => setAuthNewPass(e.target.value)}
-            placeholder="Nova senha"
-            type="password"
-            className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
-          />
-          <input
-            value={authPass2}
-            onChange={(e) => setAuthPass2(e.target.value)}
-            placeholder="Repita a nova senha"
-            type="password"
-            className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
-          />
+          <input value={authCurrentPass} onChange={(e) => setAuthCurrentPass(e.target.value)} placeholder="Senha atual" type="password" className="border border-gray-200 rounded-xl px-4 py-3 outline-none" />
+          <input value={authNewPass} onChange={(e) => setAuthNewPass(e.target.value)} placeholder="Nova senha" type="password" className="border border-gray-200 rounded-xl px-4 py-3 outline-none" />
+          <input value={authPass2} onChange={(e) => setAuthPass2(e.target.value)} placeholder="Repita a nova senha" type="password" className="border border-gray-200 rounded-xl px-4 py-3 outline-none" />
           {authError && <p className="text-rose-600 text-sm text-center">{authError}</p>}
           {authInfo && <p className="text-violet-600 text-sm text-center">{authInfo}</p>}
-          <button disabled={authBusy} onClick={submitChangePass} className="bg-black text-white rounded-full py-3 font-semibold disabled:opacity-50">
-            {authBusy ? 'Aguarde...' : 'Salvar'}
-          </button>
+          <button disabled={authBusy} onClick={submitChangePass} className="bg-black text-white rounded-full py-3 font-semibold disabled:opacity-50">{authBusy ? 'Aguarde...' : 'Salvar'}</button>
         </div>
       </Modal>
 
@@ -623,29 +556,15 @@ export default function Settings({
         <div className="flex flex-col gap-3">
           <div className="flex items-start gap-2 bg-rose-50 rounded-2xl p-3">
             <ShieldAlert size={18} className="text-rose-600 mt-0.5 shrink-0" />
-            <p className="text-rose-700 text-sm">
-              Isso apaga <b>tudo</b> permanentemente: contas, transações, cartões, investimentos, família...
-              Não dá para desfazer.
-            </p>
+            <p className="text-rose-700 text-sm">Isso apaga <b>tudo</b> permanentemente: contas, transações, cartões, investimentos, família... Não dá para desfazer.</p>
           </div>
           {googleOnly ? (
-            <p className="text-gray-500 text-sm">
-              Sua conta é só Google. Clique abaixo — vai abrir o popup do Google
-              para confirmar e depois apagamos.
-            </p>
+            <p className="text-gray-500 text-sm">Sua conta é só Google. Clique abaixo — vai abrir o popup do Google para confirmar e depois apagamos.</p>
           ) : (
-            <input
-              value={authCurrentPass}
-              onChange={(e) => setAuthCurrentPass(e.target.value)}
-              placeholder="Digite sua senha para confirmar"
-              type="password"
-              className="border border-gray-200 rounded-xl px-4 py-3 outline-none"
-            />
+            <input value={authCurrentPass} onChange={(e) => setAuthCurrentPass(e.target.value)} placeholder="Digite sua senha para confirmar" type="password" className="border border-gray-200 rounded-xl px-4 py-3 outline-none" />
           )}
           {authError && <p className="text-rose-600 text-sm text-center">{authError}</p>}
-          <button disabled={authBusy} onClick={submitDelete} className="bg-rose-600 text-white rounded-full py-3 font-semibold disabled:opacity-50">
-            {authBusy ? 'Apagando...' : 'Deletar permanentemente'}
-          </button>
+          <button disabled={authBusy} onClick={submitDelete} className="bg-rose-600 text-white rounded-full py-3 font-semibold disabled:opacity-50">{authBusy ? 'Apagando...' : 'Deletar permanentemente'}</button>
         </div>
       </Modal>
     </div>

@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ChevronDown, CreditCard, Pencil, Plus } from 'lucide-react';
+import { ChevronDown, Pencil, Plus } from 'lucide-react';
 import { months } from '../store';
 import { money, moneyShort } from '../utils/format';
 import { fmtShort } from '../utils/invoices';
 import MonthBar from './MonthBar';
+import { BankLogo, CardBrand } from './CardBadge';
 
 export default function Invoices({ state, onChangeMonth, onNewCard, onEditCard }) {
   const [open, setOpen] = useState(null);
@@ -22,7 +23,7 @@ export default function Invoices({ state, onChangeMonth, onNewCard, onEditCard }
       {state.invoices.length === 0 ? (
         <div className="bg-white rounded-[28px] p-6 shadow-sm text-center">
           <p className="font-bold">Nenhum cartão cadastrado</p>
-          <p className="text-gray-400 mt-1">Cadastre o nome e os dias de fechamento e vencimento. Sem número do cartão.</p>
+          <p className="text-gray-400 mt-1">Cadastre o nome, o banco, a bandeira e os dias de fechamento e vencimento. Sem número do cartão.</p>
           <button onClick={onNewCard} className="mt-5 w-full bg-black text-white rounded-full py-4 font-semibold flex items-center justify-center gap-2">
             <Plus size={18} /> Novo cartão
           </button>
@@ -33,12 +34,21 @@ export default function Invoices({ state, onChangeMonth, onNewCard, onEditCard }
           const usedPct = inv.card.limit > 0 ? Math.min(100, (inv.total / inv.card.limit) * 100) : 0;
           return (
             <div key={inv.card.id} className="bg-white rounded-[28px] p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <span className="flex items-center gap-2 text-gray-600 font-semibold">
-                  <span className="w-3 h-3 rounded-full" style={{ background: inv.card.color || '#000' }} />
-                  <CreditCard size={18} /> Cartão {inv.card.name}
+              <div className="flex items-center justify-between mb-3 gap-3">
+                <span className="flex items-center gap-2 text-gray-600 font-semibold min-w-0">
+                  <span className="w-8 h-8 shrink-0 rounded-full bg-white border border-gray-100 flex items-center justify-center overflow-hidden">
+                    <BankLogo
+                      name={inv.card.bank}
+                      size={20}
+                      fallback={<span className="w-3 h-3 rounded-full" style={{ background: inv.card.color || '#000' }} />}
+                    />
+                  </span>
+                  <span className="truncate">Cartão {inv.card.name}</span>
                 </span>
-                <button onClick={() => onEditCard(inv.card)} className="text-gray-400 p-1"><Pencil size={16} /></button>
+                <span className="flex items-center gap-2 shrink-0">
+                  <CardBrand brand={inv.card.brand} height={22} />
+                  <button onClick={() => onEditCard(inv.card)} className="text-gray-400 p-1"><Pencil size={16} /></button>
+                </span>
               </div>
 
               <p className="font-extrabold text-4xl">{money(inv.total)}</p>

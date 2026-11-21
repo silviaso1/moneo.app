@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Clock } from 'lucide-react';
 import { moneyShort, money, todayISO, toNumber } from '../utils/format';
+import { formatHours } from '../utils/hours';
 import CategoryIcon from './CategoryIcon';
 import DatePicker from './DatePicker';
 import { AmountDisplay, Keypad } from './AmountPad';
 import { Switch, Stepper, PayChips, fieldRound } from './ui';
 
 export default function TransactionForm({
-  accounts, cards = [], categories, initialType = 'expense', remaining = 0, onSubmit,
+  accounts, cards = [], categories, initialType = 'expense', remaining = 0, hourlyRate = 0, onSubmit,
 }) {
   const [type, setType] = useState(initialType);
   const [cents, setCents] = useState(0);
@@ -25,6 +26,16 @@ export default function TransactionForm({
   const isExp = type === 'expense';
   const total = cents / 100;
   const inst = toNumber(instValue);
+
+  // Horas de trabalho que esse gasto custa
+  const hours = isExp && hourlyRate > 0 && total > 0 ? total / hourlyRate : 0;
+
+  const HoursAlert = hours > 0 ? (
+    <div className="flex items-center justify-center gap-2 bg-amber-50 text-amber-800 rounded-2xl px-4 py-3 text-sm font-semibold mb-5">
+      <Clock size={16} />
+      <span>Isso custa <b>{formatHours(hours)}</b> do seu trabalho</span>
+    </div>
+  ) : null;
 
   const Toggle = (
     <div className="flex bg-[#f2f2f2] rounded-2xl p-1 mb-5">
@@ -56,6 +67,7 @@ export default function TransactionForm({
         <AmountDisplay cents={cents} setCents={setCents} />
         <div className="mt-1" />
         {Remaining}
+        {HoursAlert}
         <Keypad setCents={setCents} />
         <button
           type="button"
@@ -75,6 +87,7 @@ export default function TransactionForm({
       <AmountDisplay cents={cents} setCents={setCents} active={false} />
       <div className="mt-1" />
       {Remaining}
+      {HoursAlert}
 
       {isExp && categories.length > 0 && (
         <>

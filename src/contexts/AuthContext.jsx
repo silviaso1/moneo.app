@@ -1,18 +1,9 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  sendPasswordResetEmail,
-  updateProfile,
-  updatePassword,
-  linkWithCredential,
-  EmailAuthProvider,
-  deleteUser,
-  reauthenticateWithCredential,
-  GoogleAuthProvider,
+  onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+  signInWithPopup, signOut, sendPasswordResetEmail, updateProfile, updatePassword,
+  linkWithCredential, EmailAuthProvider, deleteUser, reauthenticateWithCredential,
+  reauthenticateWithPopup,
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../services/firebase';
@@ -23,15 +14,13 @@ export const useAuth = () => useContext(AuthContext);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
+  const [, setVersion] = useState(0);
+  const refresh = () => setVersion((v) => v + 1);
 
-  useEffect(
-    () =>
-      onAuthStateChanged(auth, (u) => {
-        setUser(u);
-        setReady(true);
-      }),
-    []
-  );
+  useEffect(() => onAuthStateChanged(auth, (u) => {
+    setUser(u);
+    setReady(true);
+  }), []);
 
   const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
 
@@ -39,9 +28,8 @@ export function AuthProvider({ children }) {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     if (name) {
       await updateProfile(cred.user, { displayName: name });
-      // Salva também no Firestore para garantir
       await setDoc(doc(db, 'users', cred.user.uid), { name }, { merge: true });
-      setUser({ ...cred.user, displayName: name });
+      refresh();
     }
     return cred;
   };
@@ -60,7 +48,7 @@ export function AuthProvider({ children }) {
     if (!user) throw new Error('Sem usuário');
     const credential = EmailAuthProvider.credential(email, password);
     const result = await linkWithCredential(user, credential);
-    setUser({ ...result.user });
+    refresh();
     return result;
   };
 
@@ -74,55 +62,30 @@ export function AuthProvider({ children }) {
   const deleteAccount = async (password) => {
     if (!user) throw new Error('Sem usuário');
     const providers = user.providerData.map((p) => p.providerId);
-
     if (providers.includes('password')) {
       const credential = EmailAuthProvider.credential(user.email, password);
       await reauthenticateWithCredential(user, credential);
     } else if (providers.includes('google.com')) {
-      const provider = new GoogleAuthProvider();
-      await reauthenticateWithCredential(user, provider);
+      // Google não usa reauthenticateWithCredential com o provider: precisa do popup.
+      await reauthenticateWithPopup(user, googleProvider);
     }
     await deleteUser(user);
   };
 
-  // NOVA FUNÇÃO: Atualiza o nome do usuário
-  const updateUserProfile = async (name) => {
+  const updateUserProfile = async (data) => {
     if (!user) throw new Error('Sem usuário');
-    
-    // 1. Atualiza no Firebase Auth
-    await updateProfile(user, { displayName: name });
-    
-    // 2. Atualiza no Firestore (para a família buscar)
-    await setDoc(doc(db, 'users', user.uid), { name }, { merge: true });
-    
-    // 3. Atualiza o estado local instantaneamente
-    setUser((prev) => ({ ...prev, displayName: name }));
+    if (data.name) await updateProfile(user, { displayName: data.name });
+    await setDoc(doc(db, 'users', user.uid), data, { merge: true });
+    refresh();
   };
 
-  if (!ready) {
-    return (
-      <div className="min-h-screen flex justify-center items-center">
-        <div className="w-10 h-10 border-4 border-black border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (!ready) return null;
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        login,
-        register,
-        loginWithGoogle,
-        resetPassword,
-        logout,
-        isGoogleOnly,
-        addEmailPassword,
-        changePassword,
-        deleteAccount,
-        updateUserProfile, // <-- Exportado
-      }}
-    >
+    <AuthContext.Provider value={{
+      user, login, register, loginWithGoogle, resetPassword, logout,
+      isGoogleOnly, addEmailPassword, changePassword, deleteAccount, updateUserProfile,
+    }}>
       {children}
     </AuthContext.Provider>
   );
